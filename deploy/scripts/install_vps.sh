@@ -8,6 +8,7 @@ DOMAIN="${DOMAIN:-antispam.ibox-tv.com}"
 EMAIL="${LETSENCRYPT_EMAIL:-}"
 SKIP_CERTBOT="${SKIP_CERTBOT:-false}"
 FORCE_ENV="${FORCE_ENV:-false}"
+APP_HOST_PORT="${APP_HOST_PORT:-127.0.0.1:8010}"
 
 log() {
   printf '\n[%s] %s\n' "$(date +'%H:%M:%S')" "$*"
@@ -126,6 +127,7 @@ AUTO_MIGRATE=true
 DEMO_MODE=false
 LOG_LEVEL=INFO
 RETENTION_DAYS=30
+APP_HOST_PORT=${APP_HOST_PORT}
 
 POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
 DATABASE_URL=${DATABASE_URL}
@@ -180,13 +182,13 @@ EOF
 
 configure_compose() {
   log "Configuring Docker Compose"
-  cp "${APP_DIR}/deploy/vps.docker-compose.yml" "${APP_DIR}/docker-compose.override.yml"
+  cp "${APP_DIR}/deploy/vps.docker-compose.yml" "${APP_DIR}/compose.vps.yml"
 }
 
 start_stack() {
   log "Building and starting containers"
   cd "$APP_DIR"
-  as_root docker compose up -d --build
+  as_root docker compose -f compose.vps.yml up -d --build
 }
 
 configure_nginx() {
@@ -197,7 +199,7 @@ server {
     server_name ${DOMAIN};
 
     location / {
-        proxy_pass http://127.0.0.1:8000;
+        proxy_pass http://${APP_HOST_PORT};
         proxy_http_version 1.1;
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
@@ -227,13 +229,13 @@ issue_certificate() {
 health_check() {
   log "Checking health endpoint"
   for _ in {1..12}; do
-    if curl -fsS "https://${DOMAIN}/health" || curl -fsS "http://127.0.0.1:8000/health"; then
+    if curl -fsS "https://${DOMAIN}/health" || curl -fsS "http://${APP_HOST_PORT}/health"; then
       printf '\n'
       return
     fi
     sleep 5
   done
-  die "health endpoint did not become ready. Check: cd ${APP_DIR} && docker compose logs bot"
+  die "health endpoint did not become ready. Check: cd ${APP_DIR} && docker compose -f compose.vps.yml logs bot"
 }
 
 main() {

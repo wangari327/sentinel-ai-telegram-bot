@@ -338,18 +338,16 @@ class GenericOpenAICompatibleProvider(OpenAICompatibleProvider):
 
 class DeepSeekProvider(OpenAICompatibleProvider):
     def __init__(self, settings: Settings) -> None:
-        api_key = settings.openai_compatible_api_key or settings.openai_api_key
-        model_name = settings.openai_compatible_model or "deepseek-v4-flash"
-        if not api_key:
-            raise RuntimeError("Use OPENAI_COMPATIBLE_API_KEY or OPENAI_API_KEY for DeepSeek")
+        if not settings.deepseek_api_key:
+            raise RuntimeError("DEEPSEEK_API_KEY is required for DeepSeek")
         super().__init__(
-            api_key=api_key,
-            base_url=settings.openai_compatible_base_url or "https://api.deepseek.com",
-            model_name=model_name,
+            api_key=settings.deepseek_api_key,
+            base_url=settings.deepseek_base_url,
+            model_name=settings.deepseek_model,
             timeout=settings.ai_timeout_seconds,
             max_retries=settings.ai_max_retries,
             use_structured_output=settings.openai_compatible_use_structured_output,
-            provider_name="deepseek",
+            provider_name=settings.deepseek_provider_name,
         )
 
 

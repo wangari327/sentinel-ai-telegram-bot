@@ -82,6 +82,10 @@ class Settings:
     openai_compatible_model: str
     openai_compatible_provider_name: str
     openai_compatible_use_structured_output: bool
+    deepseek_api_key: str
+    deepseek_base_url: str
+    deepseek_model: str
+    deepseek_provider_name: str
     gemini_api_key: str
     gemini_model: str
     ollama_base_url: str
@@ -193,6 +197,10 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         openai_compatible_use_structured_output=_bool(
             source.get("OPENAI_COMPATIBLE_USE_STRUCTURED_OUTPUT"), False
         ),
+        deepseek_api_key=source.get("DEEPSEEK_API_KEY", ""),
+        deepseek_base_url=source.get("DEEPSEEK_BASE_URL", "https://api.deepseek.com"),
+        deepseek_model=source.get("DEEPSEEK_MODEL", "deepseek-v4-flash"),
+        deepseek_provider_name=source.get("DEEPSEEK_PROVIDER_NAME", "deepseek").strip(),
         gemini_api_key=source.get("GEMINI_API_KEY", ""),
         gemini_model=source.get("GEMINI_MODEL", "gemini-2.5-flash"),
         ollama_base_url=source.get("OLLAMA_BASE_URL", "http://localhost:11434/v1"),

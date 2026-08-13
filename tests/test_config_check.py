@@ -30,3 +30,18 @@ def test_config_check_requires_authorized_chat_or_owner() -> None:
     )
 
     assert "AUTHORIZED_CHAT_IDS or OWNER_ADMIN_IDS" in _missing(settings)
+
+
+def test_config_check_deepseek_requires_deepseek_key() -> None:
+    settings = load_settings(
+        {
+            "BOT_TOKEN": "token",
+            "WEBHOOK_BASE_URL": "https://sentinel.example.com",
+            "WEBHOOK_SECRET": "secret",
+            "AUTHORIZED_CHAT_IDS": "-100123",
+            "AI_PROVIDER": "deepseek",
+            "HCNSEC_API_KEY": "not-used-for-deepseek",
+        }
+    )
+
+    assert "DEEPSEEK_API_KEY" in _missing(settings)

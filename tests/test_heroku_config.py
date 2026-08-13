@@ -45,6 +45,24 @@ def test_openai_compatible_alias_config_loading() -> None:
     assert settings.openai_compatible_provider_name == "hcnsec"
 
 
+def test_deepseek_config_uses_deepseek_specific_values() -> None:
+    settings = load_settings(
+        {
+            "AI_PROVIDER": "deepseek",
+            "HCNSEC_API_KEY": "hcn-key",
+            "HCNSEC_BASE_URL": "https://api.hcnsec.cn",
+            "DEEPSEEK_API_KEY": "deepseek-key",
+            "DEEPSEEK_BASE_URL": "https://api.deepseek.com",
+            "DEEPSEEK_MODEL": "deepseek-chat",
+        }
+    )
+
+    assert settings.openai_compatible_api_key == "hcn-key"
+    assert settings.deepseek_api_key == "deepseek-key"
+    assert settings.deepseek_base_url == "https://api.deepseek.com"
+    assert settings.deepseek_model == "deepseek-chat"
+
+
 def test_app_json_is_valid_heroku_button_json() -> None:
     data = json.loads(Path("app.json").read_text(encoding="utf-8"))
 

@@ -13,7 +13,7 @@ cd sentinel-ai-telegram-bot
 bash deploy/scripts/install_vps.sh
 ```
 
-The script installs prerequisites, clones or updates the repo, prompts for `BOT_TOKEN` and `HCNSEC_API_KEY`, writes `.env`, starts Docker Compose, configures Nginx, requests HTTPS for `antispam.ibox-tv.com`, and checks `/health`. It uses `sudo` only when needed.
+The script installs prerequisites, clones or updates the repo, prompts for `BOT_TOKEN` and `HCNSEC_API_KEY`, writes `.env`, starts Docker Compose through `compose.vps.yml`, configures Nginx, requests HTTPS for `antispam.ibox-tv.com`, and checks `/health`. It uses `sudo` only when needed and proxies to `127.0.0.1:8010` by default.
 
 Non-interactive example:
 
@@ -98,7 +98,7 @@ Find your Telegram user ID with a bot such as `@userinfobot`. Find a group ID by
 Copy the VPS compose file into place:
 
 ```bash
-cp deploy/vps.docker-compose.yml docker-compose.override.yml
+cp deploy/vps.docker-compose.yml compose.vps.yml
 ```
 
 Set a real database password in `.env`:
@@ -111,11 +111,11 @@ DATABASE_URL=postgresql+psycopg://sentinel:replace-this-password@postgres:5432/s
 Start the stack:
 
 ```bash
-docker compose up -d --build
-docker compose logs -f bot
+docker compose -f compose.vps.yml up -d --build
+docker compose -f compose.vps.yml logs -f bot
 ```
 
-The app listens on `127.0.0.1:8000`.
+The app listens on `127.0.0.1:8010` by default on the host and `8000` inside the container.
 
 ## 5. Nginx And HTTPS
 
@@ -171,8 +171,8 @@ journalctl -u sentinel-ai -f
 ```bash
 cd /opt/sentinel-ai-telegram-bot
 git pull
-docker compose up -d --build
-docker compose logs -f bot
+docker compose -f compose.vps.yml up -d --build
+docker compose -f compose.vps.yml logs -f bot
 ```
 
 ## Secret Safety

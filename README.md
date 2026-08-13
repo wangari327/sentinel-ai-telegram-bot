@@ -268,8 +268,9 @@ The installer:
 - prompts for `BOT_TOKEN` and `HCNSEC_API_KEY`
 - writes `/opt/sentinel-ai-telegram-bot/.env`
 - creates random `WEBHOOK_SECRET` and `POSTGRES_PASSWORD` values
-- starts Postgres, Redis, and the bot with Docker Compose
+- starts Postgres, Redis, and the bot with `docker compose -f compose.vps.yml`
 - configures Nginx for `antispam.ibox-tv.com`
+- proxies Nginx to `127.0.0.1:8010` by default to avoid common port `8000` conflicts
 - requests a Let's Encrypt HTTPS certificate
 - checks `https://antispam.ibox-tv.com/health`
 
@@ -310,6 +311,7 @@ The installer writes these values to `/opt/sentinel-ai-telegram-bot/.env`:
 BOT_TOKEN=
 WEBHOOK_BASE_URL=https://antispam.ibox-tv.com
 WEBHOOK_SECRET=
+APP_HOST_PORT=127.0.0.1:8010
 AUTHORIZED_CHAT_IDS=-1001303757981,-1002370580254
 OWNER_ADMIN_IDS=762308466
 DEFAULT_NOTIFY_ADMIN_ID=762308466
@@ -324,14 +326,14 @@ View logs:
 
 ```bash
 cd /opt/sentinel-ai-telegram-bot
-docker compose logs -f bot
+docker compose -f compose.vps.yml logs -f bot
 ```
 
 Restart:
 
 ```bash
 cd /opt/sentinel-ai-telegram-bot
-docker compose restart bot
+docker compose -f compose.vps.yml restart bot
 ```
 
 Update:
@@ -339,14 +341,20 @@ Update:
 ```bash
 cd /opt/sentinel-ai-telegram-bot
 git pull
-docker compose up -d --build
-docker compose logs -f bot
+docker compose -f compose.vps.yml up -d --build
+docker compose -f compose.vps.yml logs -f bot
 ```
 
 Health check:
 
 ```bash
 curl https://antispam.ibox-tv.com/health
+```
+
+If port `8010` is also busy, set another local port in `.env` and reload Nginx:
+
+```env
+APP_HOST_PORT=127.0.0.1:8020
 ```
 
 After deployment, add the bot to the authorized Telegram groups, promote it to admin, enable delete-message permission, and send `/setup` in each group. Start in `monitor_only`, then switch to `normal` when you are happy with detections:

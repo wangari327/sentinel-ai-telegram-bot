@@ -25,10 +25,8 @@ def _missing(settings: Settings) -> list[str]:
             missing.append("OPENAI_COMPATIBLE_API_KEY or HCNSEC_API_KEY")
         if not settings.openai_compatible_base_url:
             missing.append("OPENAI_COMPATIBLE_BASE_URL or HCNSEC_BASE_URL")
-    if settings.ai_provider == "deepseek" and not (
-        settings.openai_compatible_api_key or settings.openai_api_key
-    ):
-        missing.append("DEEPSEEK_API_KEY or OPENAI_COMPATIBLE_API_KEY")
+    if settings.ai_provider == "deepseek" and not settings.deepseek_api_key:
+        missing.append("DEEPSEEK_API_KEY")
     if settings.ai_provider == "gemini" and not settings.gemini_api_key:
         missing.append("GEMINI_API_KEY")
     return missing
