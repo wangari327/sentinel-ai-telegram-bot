@@ -225,6 +225,22 @@ curl "https://api.telegram.org/bot<BOT_TOKEN>/setWebhook?url=<WEBHOOK_BASE_URL>/
 
 ## Deploy To VPS
 
+The production VPS target is:
+
+```text
+Domain: antispam.ibox-tv.com
+VPS IP: 20.164.220.8
+OS: Ubuntu 24.04 LTS
+```
+
+The subdomain must have an `A` record pointing at the VPS IP. DNS is already expected to look like:
+
+```text
+Type: A
+Name: antispam
+Value: 20.164.220.8
+```
+
 VPS templates live in `deploy/`:
 
 - `deploy/scripts/install_vps.sh` - one-off Ubuntu VPS installer.
@@ -234,16 +250,28 @@ VPS templates live in `deploy/`:
 - `deploy/sentinel-ai.service` - systemd unit for non-Docker deployments.
 - `deploy/VPS_DEPLOY.md` - step-by-step VPS guide.
 
-Fast path:
+### One-Off Install
+
+Run this on the VPS as `root` or as a sudo-capable user:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/wangari327/sentinel-ai-telegram-bot/main/deploy/scripts/install_vps.sh -o install_vps.sh
 bash install_vps.sh
 ```
 
-Run it as `root` or as a sudo-capable user.
+The installer:
 
-Non-interactive:
+- installs Git, Docker, Nginx, Certbot, and required system packages
+- clones or updates this repository into `/opt/sentinel-ai-telegram-bot`
+- prompts for `BOT_TOKEN` and `HCNSEC_API_KEY`
+- writes `/opt/sentinel-ai-telegram-bot/.env`
+- creates random `WEBHOOK_SECRET` and `POSTGRES_PASSWORD` values
+- starts Postgres, Redis, and the bot with Docker Compose
+- configures Nginx for `antispam.ibox-tv.com`
+- requests a Let's Encrypt HTTPS certificate
+- checks `https://antispam.ibox-tv.com/health`
+
+Non-interactive install:
 
 ```bash
 export BOT_TOKEN='paste-token-here'
@@ -252,7 +280,21 @@ export LETSENCRYPT_EMAIL='admin@ibox-tv.com'
 bash install_vps.sh
 ```
 
-Fill these values in `.env` on the VPS:
+If `.env` already exists, the installer keeps it. To intentionally rewrite it:
+
+```bash
+FORCE_ENV=true bash install_vps.sh
+```
+
+To skip Let's Encrypt during a dry run:
+
+```bash
+SKIP_CERTBOT=true bash install_vps.sh
+```
+
+### Required VPS Env
+
+The installer writes these values to `/opt/sentinel-ai-telegram-bot/.env`:
 
 ```env
 BOT_TOKEN=
@@ -264,7 +306,47 @@ DEFAULT_NOTIFY_ADMIN_ID=762308466
 HCNSEC_API_KEY=
 ```
 
-Do not commit the real `.env`. If an API key was pasted into chat or logs, rotate it with the provider and put the replacement only on the VPS.
+Do not commit the real `.env`. If an API key or bot token was pasted into chat, logs, or Git history, rotate it with the provider and update only the VPS `.env`.
+
+### VPS Operations
+
+View logs:
+
+```bash
+cd /opt/sentinel-ai-telegram-bot
+docker compose logs -f bot
+```
+
+Restart:
+
+```bash
+cd /opt/sentinel-ai-telegram-bot
+docker compose restart bot
+```
+
+Update:
+
+```bash
+cd /opt/sentinel-ai-telegram-bot
+git pull
+docker compose up -d --build
+docker compose logs -f bot
+```
+
+Health check:
+
+```bash
+curl https://antispam.ibox-tv.com/health
+```
+
+After deployment, add the bot to the authorized Telegram groups, promote it to admin, enable delete-message permission, and send `/setup` in each group. Start in `monitor_only`, then switch to `normal` when you are happy with detections:
+
+```text
+/status
+/mode
+```
+
+The full VPS guide is in `deploy/VPS_DEPLOY.md`.
 
 ## Deploy To Heroku
 
