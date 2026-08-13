@@ -1,0 +1,120 @@
+from __future__ import annotations
+
+import asyncio
+from contextlib import asynccontextmanager
+from typing import Any
+
+from aiogram import Bot, Dispatcher
+from aiogram.client.default import DefaultBotProperties
+from aiogram.enums import ParseMode
+from aiogram.exceptions import TelegramAPIError
+from aiogram.types import Update
+from fastapi import FastAPI, HTTPException, Request
+
+from app.bot.callbacks import router as callbacks_router
+from app.bot.handlers.commands import router as commands_router
+from app.bot.handlers.group_messages import router as group_messages_router
+from app.bot.handlers.private_messages import router as private_messages_router
+from app.config import settings
+from app.db.session import init_db
+from app.logging import configure_logging, get_logger
+
+logger = get_logger(__name__)
+
+bot: Bot | None = None
+dispatcher: Dispatcher | None = None
+
+
+def build_dispatcher() -> Dispatcher:
+    dp = Dispatcher()
+    dp.include_router(callbacks_router)
+    dp.include_router(commands_router)
+    dp.include_router(private_messages_router)
+    dp.include_router(group_messages_router)
+    return dp
+
+
+async def set_webhook_if_enabled(bot_instance: Bot) -> None:
+    if not settings.auto_set_webhook:
+        return
+    if not settings.webhook_base_url:
+        logger.warning("AUTO_SET_WEBHOOK is true but WEBHOOK_BASE_URL is empty")
+        return
+    try:
+        await bot_instance.set_webhook(settings.webhook_url, drop_pending_updates=False)
+        logger.info("Telegram webhook registered")
+    except TelegramAPIError:
+        logger.exception("Telegram webhook registration failed")
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    configure_logging(settings.log_level)
+    if settings.auto_migrate:
+        init_db()
+    global bot, dispatcher
+    if settings.bot_token:
+        bot = Bot(
+            token=settings.bot_token,
+            default=DefaultBotProperties(parse_mode=ParseMode.HTML),
+        )
+        dispatcher = build_dispatcher()
+        await set_webhook_if_enabled(bot)
+    else:
+        logger.warning("BOT_TOKEN is empty; webhook will reject Telegram updates")
+    yield
+    if bot:
+        await bot.session.close()
+
+
+app = FastAPI(title=settings.project_name, lifespan=lifespan)
+
+
+@app.get("/health")
+async def health() -> dict[str, Any]:
+    return {
+        "ok": True,
+        "project": settings.project_name,
+        "ai_provider": settings.ai_provider,
+        "fallback_provider": settings.ai_fallback_provider,
+        "authorized_chat_count": len(settings.authorized_chat_ids),
+        "require_authorized_chats": settings.require_authorized_chats,
+        "demo_mode": settings.demo_mode,
+    }
+
+
+@app.post("/telegram/webhook/{secret}")
+async def telegram_webhook(secret: str, request: Request) -> dict[str, bool]:
+    if secret != settings.webhook_secret:
+        raise HTTPException(status_code=404, detail="not found")
+    if bot is None or dispatcher is None:
+        raise HTTPException(status_code=503, detail="bot is not configured")
+    payload = await request.json()
+    update = Update.model_validate(payload, context={"bot": bot})
+    await dispatcher.feed_update(bot, update)
+    return {"ok": True}
+
+
+async def run_polling() -> None:
+    configure_logging(settings.log_level)
+    if not settings.bot_token:
+        raise RuntimeError("BOT_TOKEN is required for polling")
+    if settings.auto_migrate:
+        init_db()
+    polling_bot = Bot(
+        token=settings.bot_token,
+        default=DefaultBotProperties(parse_mode=ParseMode.HTML),
+    )
+    dp = build_dispatcher()
+    try:
+        await dp.start_polling(polling_bot)
+    finally:
+        await polling_bot.session.close()
+
+
+def main() -> None:
+    asyncio.run(run_polling())
+
+
+if __name__ == "__main__":
+    main()

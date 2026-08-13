@@ -1,0 +1,13 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.venv/
+venv/
+.env
+sentinel_ai.db
+*.sqlite3
+dist/
+build/
+*.egg-info/

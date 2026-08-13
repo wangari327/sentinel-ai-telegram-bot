@@ -1,0 +1,155 @@
+{
+  "name": "SentinelAI Telegram Anti-Spam Bot",
+  "description": "AI-powered Telegram group anti-spam moderation bot with admin training, auto-delete, authorized-chat enforcement, and suspicious-content review.",
+  "keywords": ["telegram", "moderation", "anti-spam", "ai", "openai", "fastapi"],
+  "repository": "https://github.com/YOUR_USERNAME/sentinel-ai-telegram-bot",
+  "env": {
+    "BOT_TOKEN": {
+      "description": "Telegram bot token from BotFather.",
+      "required": true
+    },
+    "AI_PROVIDER": {
+      "description": "AI provider to use: openai, openai_compatible, newapi, hcnsec, deepseek, gemini, ollama, mock, or rules_only.",
+      "value": "openai"
+    },
+    "OPENAI_API_KEY": {
+      "description": "OpenAI API key. Required when AI_PROVIDER=openai.",
+      "required": false
+    },
+    "OPENAI_MODEL": {
+      "description": "Default OpenAI classifier model.",
+      "value": "gpt-5.5-mini"
+    },
+    "OPENAI_ESCALATION_MODEL": {
+      "description": "Escalation model for uncertain moderation decisions.",
+      "value": "gpt-5.5"
+    },
+    "OPENAI_BASE_URL": {
+      "description": "OpenAI-compatible API base URL.",
+      "value": "https://api.openai.com/v1"
+    },
+    "OPENAI_COMPATIBLE_API_KEY": {
+      "description": "API key for OpenAI-compatible third-party gateways such as hcnsec/NewAPI/OpenRouter/DeepSeek.",
+      "required": false
+    },
+    "OPENAI_COMPATIBLE_BASE_URL": {
+      "description": "Base URL for the OpenAI-compatible gateway, for example https://api.hcnsec.cn or https://openrouter.ai/api/v1.",
+      "required": false
+    },
+    "OPENAI_COMPATIBLE_MODEL": {
+      "description": "Model name for the OpenAI-compatible gateway.",
+      "value": "deepseek-v4-flash"
+    },
+    "OPENAI_COMPATIBLE_PROVIDER_NAME": {
+      "description": "Name stored in moderation logs for the gateway.",
+      "value": "openai_compatible"
+    },
+    "OPENAI_COMPATIBLE_USE_STRUCTURED_OUTPUT": {
+      "description": "Set true only if the gateway/model supports OpenAI strict json_schema response_format.",
+      "value": "false"
+    },
+    "HCNSEC_API_KEY": {
+      "description": "Optional hcnsec/NewAPI key alias. Prefer Heroku config vars; never commit secrets.",
+      "required": false
+    },
+    "HCNSEC_BASE_URL": {
+      "description": "Optional hcnsec/NewAPI base URL alias.",
+      "value": "https://api.hcnsec.cn"
+    },
+    "HCNSEC_MODEL": {
+      "description": "Optional hcnsec/NewAPI model alias.",
+      "value": "deepseek-v4-flash"
+    },
+    "DEEPSEEK_API_KEY": {
+      "description": "Official DeepSeek API key alias when AI_PROVIDER=deepseek.",
+      "required": false
+    },
+    "DEEPSEEK_BASE_URL": {
+      "description": "Official DeepSeek OpenAI-compatible base URL.",
+      "value": "https://api.deepseek.com"
+    },
+    "DEEPSEEK_MODEL": {
+      "description": "Official DeepSeek model name.",
+      "value": "deepseek-v4-flash"
+    },
+    "DATABASE_URL": {
+      "description": "Database URL. Heroku Postgres normally provides this automatically.",
+      "required": false
+    },
+    "REDIS_URL": {
+      "description": "Redis URL. Optional for basic testing.",
+      "required": false
+    },
+    "WEBHOOK_BASE_URL": {
+      "description": "Public Heroku app URL, for example https://your-app-name.herokuapp.com",
+      "required": true
+    },
+    "WEBHOOK_SECRET": {
+      "description": "Secret path segment used for Telegram webhook security. Use a long random string.",
+      "generator": "secret"
+    },
+    "REQUIRE_AUTHORIZED_CHATS": {
+      "description": "Only moderate explicitly authorized chats.",
+      "value": "true"
+    },
+    "AUTHORIZED_CHAT_IDS": {
+      "description": "Comma-separated Telegram group/supergroup chat IDs allowed to use this bot.",
+      "required": false
+    },
+    "OWNER_ADMIN_IDS": {
+      "description": "Comma-separated Telegram user IDs allowed to authorize chats with /setup.",
+      "required": false
+    },
+    "LOG_LEVEL": {
+      "description": "Logging level.",
+      "value": "INFO"
+    },
+    "RETENTION_DAYS": {
+      "description": "Number of days to keep moderation logs.",
+      "value": "30"
+    },
+    "AI_TIMEOUT_SECONDS": {
+      "description": "AI request timeout in seconds.",
+      "value": "6"
+    },
+    "AI_MAX_RETRIES": {
+      "description": "Maximum AI request retries.",
+      "value": "2"
+    },
+    "AI_USE_STRUCTURED_OUTPUT": {
+      "description": "Use structured JSON output when supported by provider.",
+      "value": "true"
+    },
+    "AI_ESCALATE_ON_UNSURE": {
+      "description": "Use stronger escalation model for uncertain decisions.",
+      "value": "true"
+    },
+    "AI_ENABLE_PROVIDER_FALLBACK": {
+      "description": "Fallback to another provider or rules-only mode when primary AI fails.",
+      "value": "true"
+    },
+    "AI_FALLBACK_PROVIDER": {
+      "description": "Fallback provider: gemini, ollama, mock, or rules_only.",
+      "value": "rules_only"
+    },
+    "AUTO_SET_WEBHOOK": {
+      "description": "Automatically register Telegram webhook on startup.",
+      "value": "true"
+    },
+    "AUTO_MIGRATE": {
+      "description": "Automatically run database setup on startup.",
+      "value": "true"
+    },
+    "DEMO_MODE": {
+      "description": "Safe demo mode. No bans and no deletes unless explicitly confirmed by admin.",
+      "value": "false"
+    }
+  },
+  "addons": ["heroku-postgresql:essential-0"],
+  "formation": {
+    "web": {
+      "quantity": 1,
+      "size": "basic"
+    }
+  }
+}
