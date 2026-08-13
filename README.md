@@ -227,6 +227,7 @@ curl "https://api.telegram.org/bot<BOT_TOKEN>/setWebhook?url=<WEBHOOK_BASE_URL>/
 
 VPS templates live in `deploy/`:
 
+- `deploy/scripts/install_vps.sh` - one-off Ubuntu VPS installer.
 - `deploy/vps.env.example` - production `.env` template with hcnsec/NewAPI defaults.
 - `deploy/vps.docker-compose.yml` - Docker Compose override for Postgres, Redis, and bot.
 - `deploy/nginx-sentinel-ai.conf` - Nginx reverse proxy example.
@@ -236,12 +237,19 @@ VPS templates live in `deploy/`:
 Fast path:
 
 ```bash
-git clone https://github.com/wangari327/sentinel-ai-telegram-bot.git /opt/sentinel-ai-telegram-bot
-cd /opt/sentinel-ai-telegram-bot
-cp deploy/vps.env.example .env
-nano .env
-cp deploy/vps.docker-compose.yml docker-compose.override.yml
-docker compose up -d --build
+curl -fsSL https://raw.githubusercontent.com/wangari327/sentinel-ai-telegram-bot/main/deploy/scripts/install_vps.sh -o install_vps.sh
+bash install_vps.sh
+```
+
+Run it as `root` or as a sudo-capable user.
+
+Non-interactive:
+
+```bash
+export BOT_TOKEN='paste-token-here'
+export HCNSEC_API_KEY='paste-key-here'
+export LETSENCRYPT_EMAIL='admin@ibox-tv.com'
+bash install_vps.sh
 ```
 
 Fill these values in `.env` on the VPS:
