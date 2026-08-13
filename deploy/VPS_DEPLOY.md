@@ -2,6 +2,32 @@
 
 This guide deploys SentinelAI on a Linux VPS with Docker Compose or systemd. Keep real secrets only on the VPS in `/opt/sentinel-ai-telegram-bot/.env`.
 
+## One-Off Installer
+
+On a fresh Ubuntu 24.04 VPS, run this after logging in as `root` or as your normal sudo user:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/wangari327/sentinel-ai-telegram-bot/main/deploy/scripts/install_vps.sh -o install_vps.sh
+bash install_vps.sh
+```
+
+The script installs prerequisites, clones or updates the repo, prompts for `BOT_TOKEN` and `HCNSEC_API_KEY`, writes `.env`, starts Docker Compose, configures Nginx, requests HTTPS for `antispam.ibox-tv.com`, and checks `/health`. It uses `sudo` only when needed.
+
+Non-interactive example:
+
+```bash
+export BOT_TOKEN='paste-token-here'
+export HCNSEC_API_KEY='paste-key-here'
+export LETSENCRYPT_EMAIL='admin@ibox-tv.com'
+bash install_vps.sh
+```
+
+If you already uploaded `.env` yourself, the script keeps it unless you run:
+
+```bash
+FORCE_ENV=true bash install_vps.sh
+```
+
 ## 1. Prepare DNS And Server
 
 Point a domain or subdomain to the VPS:
