@@ -255,8 +255,10 @@ VPS templates live in `deploy/`:
 Run this on the VPS as `root` or as a sudo-capable user:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/wangari327/sentinel-ai-telegram-bot/main/deploy/scripts/install_vps.sh -o install_vps.sh
-bash install_vps.sh
+cd /opt
+git clone https://github.com/wangari327/sentinel-ai-telegram-bot.git
+cd sentinel-ai-telegram-bot
+bash deploy/scripts/install_vps.sh
 ```
 
 The installer:
@@ -274,22 +276,30 @@ The installer:
 Non-interactive install:
 
 ```bash
+cd /opt/sentinel-ai-telegram-bot
 export BOT_TOKEN='paste-token-here'
 export HCNSEC_API_KEY='paste-key-here'
 export LETSENCRYPT_EMAIL='admin@ibox-tv.com'
-bash install_vps.sh
+bash deploy/scripts/install_vps.sh
 ```
 
 If `.env` already exists, the installer keeps it. To intentionally rewrite it:
 
 ```bash
-FORCE_ENV=true bash install_vps.sh
+FORCE_ENV=true bash deploy/scripts/install_vps.sh
 ```
 
 To skip Let's Encrypt during a dry run:
 
 ```bash
-SKIP_CERTBOT=true bash install_vps.sh
+SKIP_CERTBOT=true bash deploy/scripts/install_vps.sh
+```
+
+If you prefer not to clone first, you can download the script directly. This depends on GitHub Raw being available from the VPS network:
+
+```bash
+curl --retry 5 --retry-delay 3 -fSL https://raw.githubusercontent.com/wangari327/sentinel-ai-telegram-bot/main/deploy/scripts/install_vps.sh -o install_vps.sh
+bash install_vps.sh
 ```
 
 ### Required VPS Env
