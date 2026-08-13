@@ -7,7 +7,7 @@ This guide deploys SentinelAI on a Linux VPS with Docker Compose or systemd. Kee
 Point a domain or subdomain to the VPS:
 
 ```text
-sentinel.example.com -> VPS public IP
+antispam.ibox-tv.com -> 20.164.220.8
 ```
 
 Install Docker and Nginx:
@@ -41,11 +41,11 @@ Fill at minimum:
 
 ```env
 BOT_TOKEN=your-telegram-bot-token
-WEBHOOK_BASE_URL=https://sentinel.example.com
+WEBHOOK_BASE_URL=https://antispam.ibox-tv.com
 WEBHOOK_SECRET=use-a-long-random-secret
-AUTHORIZED_CHAT_IDS=-1001234567890
-OWNER_ADMIN_IDS=123456789
-DEFAULT_NOTIFY_ADMIN_ID=123456789
+AUTHORIZED_CHAT_IDS=-1001303757981,-1002370580254
+OWNER_ADMIN_IDS=762308466
+DEFAULT_NOTIFY_ADMIN_ID=762308466
 HCNSEC_API_KEY=your-provider-key
 ```
 
@@ -87,17 +87,16 @@ Copy the Nginx example and edit the domain:
 
 ```bash
 sudo cp deploy/nginx-sentinel-ai.conf /etc/nginx/sites-available/sentinel-ai
-sudo nano /etc/nginx/sites-available/sentinel-ai
 sudo ln -s /etc/nginx/sites-available/sentinel-ai /etc/nginx/sites-enabled/sentinel-ai
 sudo nginx -t
 sudo systemctl reload nginx
-sudo certbot --nginx -d sentinel.example.com
+sudo certbot --nginx -d antispam.ibox-tv.com
 ```
 
 Check health:
 
 ```bash
-curl https://sentinel.example.com/health
+curl https://antispam.ibox-tv.com/health
 ```
 
 If `AUTO_SET_WEBHOOK=true`, the bot registers the webhook on startup:

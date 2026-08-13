@@ -6,6 +6,8 @@ __pycache__/
 .venv/
 venv/
 .env
+.env.*
+!.env.example
 sentinel_ai.db
 *.sqlite3
 dist/
