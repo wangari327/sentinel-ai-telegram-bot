@@ -189,6 +189,12 @@ pip install -e ".[dev]"
 AUTO_SET_WEBHOOK=false sentinel-ai-polling
 ```
 
+Validate production-style environment variables before deployment:
+
+```bash
+sentinel-ai-config-check
+```
+
 ## Production Webhook
 
 Run:
@@ -216,6 +222,41 @@ curl "https://api.telegram.org/bot<BOT_TOKEN>/setWebhook?url=<WEBHOOK_BASE_URL>/
 ```
 
 `BOT_TOKEN` is never placed in your webhook URL.
+
+## Deploy To VPS
+
+VPS templates live in `deploy/`:
+
+- `deploy/vps.env.example` - production `.env` template with hcnsec/NewAPI defaults.
+- `deploy/vps.docker-compose.yml` - Docker Compose override for Postgres, Redis, and bot.
+- `deploy/nginx-sentinel-ai.conf` - Nginx reverse proxy example.
+- `deploy/sentinel-ai.service` - systemd unit for non-Docker deployments.
+- `deploy/VPS_DEPLOY.md` - step-by-step VPS guide.
+
+Fast path:
+
+```bash
+git clone https://github.com/wangari327/sentinel-ai-telegram-bot.git /opt/sentinel-ai-telegram-bot
+cd /opt/sentinel-ai-telegram-bot
+cp deploy/vps.env.example .env
+nano .env
+cp deploy/vps.docker-compose.yml docker-compose.override.yml
+docker compose up -d --build
+```
+
+Fill these values in `.env` on the VPS:
+
+```env
+BOT_TOKEN=
+WEBHOOK_BASE_URL=https://your-domain.example
+WEBHOOK_SECRET=
+AUTHORIZED_CHAT_IDS=
+OWNER_ADMIN_IDS=
+DEFAULT_NOTIFY_ADMIN_ID=
+HCNSEC_API_KEY=
+```
+
+Do not commit the real `.env`. If an API key was pasted into chat or logs, rotate it with the provider and put the replacement only on the VPS.
 
 ## Deploy To Heroku
 
