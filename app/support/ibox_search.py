@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from datetime import datetime
+from difflib import SequenceMatcher
 from urllib.parse import quote_plus
 
 from sqlalchemy import create_engine, func, or_, select, text
@@ -159,6 +160,7 @@ def search_tvweb_cache(
     pattern = f"%{query_key}%"
     title_lower = func.lower(TvwebCatalogItem.title)
     episode_lower = func.lower(TvwebCatalogItem.episode_title)
+    candidate_limit = max(limit * 8, 25)
     stmt = (
         select(TvwebCatalogItem)
         .where(or_(title_lower.like(pattern), episode_lower.like(pattern)))
@@ -168,11 +170,22 @@ def search_tvweb_cache(
             TvwebCatalogItem.source_updated_at.desc(),
             TvwebCatalogItem.updated_at.desc(),
         )
-        .limit(limit)
+        .limit(candidate_limit)
     )
     if category:
         stmt = stmt.where(TvwebCatalogItem.category == ("movie" if category == "movies" else category))
-    rows = session.scalars(stmt).all()
+    rows = [
+        row
+        for row in session.scalars(stmt).all()
+        if _catalog_text_matches(query_key, row)
+    ]
+    if not rows:
+        rows = _fuzzy_tvweb_cache_rows(
+            session=session,
+            query_key=query_key,
+            category=category,
+            limit=limit,
+        )
     return [
         IboxItem(
             id=row.tvweb_id,
@@ -185,5 +198,54 @@ def search_tvweb_cache(
             download_link=row.download_link,
             source_updated_at=row.source_updated_at,
         )
-        for row in rows
+        for row in rows[:limit]
     ]
+
+
+def _fuzzy_tvweb_cache_rows(
+    *,
+    session: Session,
+    query_key: str,
+    category: str | None,
+    limit: int,
+) -> list[TvwebCatalogItem]:
+    if len(query_key) < 5:
+        return []
+    stmt = select(TvwebCatalogItem)
+    if category:
+        stmt = stmt.where(TvwebCatalogItem.category == ("movie" if category == "movies" else category))
+    candidates = session.scalars(stmt.limit(6000)).all()
+    scored = [
+        (score, row)
+        for row in candidates
+        if (score := _catalog_similarity(query_key, row.title_key)) >= _fuzzy_threshold(query_key)
+    ]
+    scored.sort(key=lambda item: item[0], reverse=True)
+    if len(scored) > 1 and scored[0][0] - scored[1][0] < 0.03:
+        return []
+    return [row for _, row in scored[:limit]]
+
+
+def _catalog_text_matches(query_key: str, row: TvwebCatalogItem) -> bool:
+    pattern = re.compile(rf"(?<!\w){re.escape(query_key)}(?!\w)")
+    values = [
+        row.title_key or "",
+        normalize_title_query(row.episode_title or "").casefold(),
+    ]
+    return any(pattern.search(value) for value in values)
+
+
+def _catalog_similarity(query_key: str, title_key: str | None) -> float:
+    if not query_key or not title_key:
+        return 0.0
+    if query_key[0] != title_key[0]:
+        return 0.0
+    query_words = query_key.split()
+    title_words = title_key.split()
+    if len(query_words) == 1 and len(title_words) == 1 and abs(len(query_key) - len(title_key)) > 2:
+        return 0.0
+    return SequenceMatcher(None, query_key, title_key).ratio()
+
+
+def _fuzzy_threshold(query_key: str) -> float:
+    return 0.82 if len(query_key.split()) == 1 else 0.78

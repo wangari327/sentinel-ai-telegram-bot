@@ -36,17 +36,15 @@ async def send_ephemeral_message(
         )
     except TelegramAPIError:
         return None
-    repositories.record_bot_sent_message(
-        session,
-        chat_id=chat_id,
-        message_id=int(getattr(sent, "message_id", 0)),
-        purpose=purpose,
-        delete_after=(
-            datetime.now(tz=UTC) + timedelta(seconds=settings.support_reply_cleanup_seconds)
-            if cleanup and settings.support_reply_cleanup_seconds > 0
-            else None
-        ),
-    )
+    if cleanup and settings.support_reply_cleanup_seconds > 0:
+        repositories.record_bot_sent_message(
+            session,
+            chat_id=chat_id,
+            message_id=int(getattr(sent, "message_id", 0)),
+            purpose=purpose,
+            delete_after=datetime.now(tz=UTC)
+            + timedelta(seconds=settings.support_reply_cleanup_seconds),
+        )
     return sent
 
 
@@ -146,17 +144,15 @@ async def send_tutorial_if_available(
             )
     except TelegramAPIError:
         return None
-    repositories.record_bot_sent_message(
-        session,
-        chat_id=chat_id,
-        message_id=int(getattr(sent, "message_id", 0)),
-        purpose="tutorial_reply",
-        delete_after=(
-            datetime.now(tz=UTC) + timedelta(seconds=settings.support_reply_cleanup_seconds)
-            if cleanup and settings.support_reply_cleanup_seconds > 0
-            else None
-        ),
-    )
+    if cleanup and settings.support_reply_cleanup_seconds > 0:
+        repositories.record_bot_sent_message(
+            session,
+            chat_id=chat_id,
+            message_id=int(getattr(sent, "message_id", 0)),
+            purpose="tutorial_reply",
+            delete_after=datetime.now(tz=UTC)
+            + timedelta(seconds=settings.support_reply_cleanup_seconds),
+        )
     return sent
 
 

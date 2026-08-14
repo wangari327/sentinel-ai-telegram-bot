@@ -169,7 +169,18 @@ class RulesOnlyProvider(AIProvider):
             reasons.append("login phishing language")
             lure_type = "phishing"
 
-        if score >= 0.96 and features.get("high_risk_link"):
+        severe_adult_lure = bool(
+            features.get("contains_suspicious_adult_story_lure")
+            and features.get("contains_adult_spam_cta")
+        )
+        severe_nonlink_spam = bool(
+            severe_adult_lure
+            or features.get("contains_crypto_scam")
+            or features.get("contains_fake_reward")
+            or features.get("contains_telegram_login_phishing_language")
+        )
+
+        if score >= 0.96 and (features.get("high_risk_link") or severe_nonlink_spam):
             label: Label = "spam"
             action: RecommendedAction = "delete"
             review = False
@@ -186,9 +197,10 @@ class RulesOnlyProvider(AIProvider):
             action = "ask_admin"
             review = True
 
+        result_confidence = 1.0 - score if label == "not_spam" else score
         return ClassificationResult(
             label=label,
-            confidence=max(0.0, min(1.0, score)),
+            confidence=max(0.0, min(1.0, result_confidence)),
             risk_reasons=list(dict.fromkeys(reasons)),
             safe_reasons=[],
             detected_lure_type=lure_type if label != "not_spam" else None,

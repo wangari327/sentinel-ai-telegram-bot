@@ -88,6 +88,23 @@ async def test_rules_only_deletes_current_adult_bot_campaign() -> None:
     assert result.detected_lure_type == "porn_bait"
 
 
+async def test_rules_only_reports_high_confidence_for_harmless_message() -> None:
+    normalized = normalize_message_parts(text="Requesting Avatar")
+    features = extract_features(normalized)
+    rule_score = compute_rule_score(features)
+    request = ClassificationRequest(
+        normalized_text=normalized.text,
+        raw_excerpt=normalized.raw_excerpt,
+        rule_features=features.to_dict(),
+        rule_score=rule_score.score,
+    )
+
+    result = await RulesOnlyProvider().classify(request)
+
+    assert result.label == "not_spam"
+    assert result.confidence == 1.0
+
+
 def test_gemini_and_ollama_mock_response_validation() -> None:
     for provider in ("gemini", "ollama"):
         result = parse_classification_json(

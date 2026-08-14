@@ -406,7 +406,7 @@ def record_violation(
     violation.violation_count += 1
     violation.last_violation_at = datetime.now(tz=UTC)
     violation.last_action = action
-    violation.risk_score = max(violation.risk_score, score)
+    violation.risk_score = max(violation.risk_score or 0.0, score)
     session.flush()
     return violation
 

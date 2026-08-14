@@ -30,7 +30,7 @@ def _session() -> Session:
     return Session(engine)
 
 
-async def test_ephemeral_message_can_be_marked_durable() -> None:
+async def test_durable_ephemeral_message_is_not_cleanup_tracked() -> None:
     settings = load_settings({"SUPPORT_REPLY_CLEANUP_SECONDS": "60"})
     bot = FakeBot()
 
@@ -47,8 +47,6 @@ async def test_ephemeral_message_can_be_marked_durable() -> None:
 
         sent = session.scalar(select(BotSentMessage))
 
-    assert sent is not None
-    assert sent.delete_after is None
+    assert sent is None
     assert bot.kwargs is not None
     assert bot.kwargs["parse_mode"] == "HTML"
-

@@ -442,7 +442,6 @@ async def _choose_private_issue_merge_id(
         limit=12,
         status="open",
     )
-    candidates = [candidate for candidate in candidates if candidate.issue_type == issue_type]
     return await choose_support_merge_candidate_with_ai(
         kind="issue",
         text=normalized.text,

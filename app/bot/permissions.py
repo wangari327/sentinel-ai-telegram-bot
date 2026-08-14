@@ -38,7 +38,7 @@ async def get_bot_permissions(bot: object, chat_id: int) -> BotPermissions:
     try:
         me = await bot.get_me()
         member = await bot.get_chat_member(chat_id=chat_id, user_id=me.id)
-        status = getattr(member, "status", None)
+        status = _status_value(getattr(member, "status", None))
         return BotPermissions(
             is_admin=status in ADMIN_STATUSES,
             can_delete_messages=bool(getattr(member, "can_delete_messages", False)),
@@ -55,9 +55,14 @@ async def user_is_chat_admin(bot: object, chat_id: int, user_id: int | None) -> 
         return False
     try:
         member = await bot.get_chat_member(chat_id=chat_id, user_id=user_id)
-        return getattr(member, "status", None) in ADMIN_STATUSES
+        return _status_value(getattr(member, "status", None)) in ADMIN_STATUSES
     except TelegramAPIError:
         return False
+
+
+def _status_value(status: object) -> str | None:
+    value = getattr(status, "value", status)
+    return str(value).lower() if value is not None else None
 
 
 def permissions_warning(permissions: BotPermissions) -> str | None:

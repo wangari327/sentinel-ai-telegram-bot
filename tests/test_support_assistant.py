@@ -27,6 +27,7 @@ def test_detects_requesting_prefix_cleanly() -> None:
 
 def test_bare_title_detection_is_opt_in() -> None:
     assert detect_support_intent("Avatar") is None
+    assert detect_support_intent("Www", allow_bare_title=True) is None
 
     intent = detect_support_intent("Avatar", allow_bare_title=True)
 
@@ -53,11 +54,37 @@ def test_detects_expired_link_issue_from_group_language() -> None:
     assert intent.title_query == "lioness"
 
 
+def test_issue_title_strips_season_episode_noise() -> None:
+    intent = detect_support_intent("Fix Silo season 3 episode 1-2")
+
+    assert intent is not None
+    assert intent.kind == "issue"
+    assert intent.title_query == "Silo"
+
+
 def test_detects_howto_request() -> None:
     intent = detect_support_intent("How do I download and play the files?")
 
     assert intent is not None
     assert intent.kind == "howto"
+
+
+def test_support_parser_avoids_substring_false_positives() -> None:
+    assert detect_support_intent("The address is fine") is None
+    assert detect_support_intent("That soundtrack is nice") is None
+
+
+def test_support_parser_rejects_generic_help_as_content_request() -> None:
+    assert detect_support_intent("send help") is None
+
+
+def test_playback_issue_extracts_title_after_subtitle_words() -> None:
+    intent = detect_support_intent("Need subtitles for Silo")
+
+    assert intent is not None
+    assert intent.kind == "issue"
+    assert intent.issue_type == "playback"
+    assert intent.title_query == "Silo"
 
 
 def test_issue_reply_uses_human_label_not_internal_slug() -> None:
@@ -143,6 +170,57 @@ def test_cached_tvweb_lookup_finds_title_without_upstream_query() -> None:
 
     assert matches
     assert matches[0].title == "Avatar"
+
+
+def test_cached_tvweb_lookup_uses_conservative_fuzzy_fallback() -> None:
+    engine = create_engine("sqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+    settings = load_settings({})
+    with Session(engine) as session:
+        session.add(
+            TvwebCatalogItem(
+                tvweb_id=1,
+                title="Avatar",
+                title_key="avatar",
+                episode_title=None,
+                category="movie",
+                slug="avatar",
+                year=2009,
+                rating=7.9,
+                download_link=None,
+            )
+        )
+        session.commit()
+
+        matches = search_tvweb_cache(session=session, settings=settings, query="Avater")
+
+    assert matches
+    assert matches[0].title == "Avatar"
+
+
+def test_cached_tvweb_lookup_rejects_ambiguous_or_wrong_first_letter_fuzzy_match() -> None:
+    engine = create_engine("sqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+    settings = load_settings({})
+    with Session(engine) as session:
+        session.add(
+            TvwebCatalogItem(
+                tvweb_id=1,
+                title="Preacher",
+                title_key="preacher",
+                episode_title=None,
+                category="tv",
+                slug="preacher",
+                year=2016,
+                rating=7.9,
+                download_link=None,
+            )
+        )
+        session.commit()
+
+        matches = search_tvweb_cache(session=session, settings=settings, query="Reacher")
+
+    assert matches == []
 
 
 def test_support_responder_selects_hcnsec_chat_config() -> None:

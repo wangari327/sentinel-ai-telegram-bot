@@ -241,6 +241,8 @@ AI_TIMEOUT_SECONDS=6
 AI_MAX_RETRIES=2
 ```
 
+With `AI_SCAN_LINKS_ONLY=true`, Sentinel still escalates severe no-link risk text such as adult clickbait lures, crypto scams, fake rewards, and login phishing language. This keeps costs low without letting obvious text-only campaigns slide into "ask admin" purgatory.
+
 ## Local Development
 
 Create `.env` from `.env.example`, then run:

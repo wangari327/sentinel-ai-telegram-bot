@@ -69,8 +69,19 @@ def should_skip(
 def should_call_ai(*, features: object, group_settings: object) -> bool:
     if getattr(group_settings, "ai_scan_all_messages", False):
         return True
+    risky_text_without_url = any(
+        getattr(features, field, False)
+        for field in (
+            "contains_porn_bait",
+            "contains_adult_spam_cta",
+            "contains_suspicious_adult_story_lure",
+            "contains_crypto_scam",
+            "contains_fake_reward",
+            "contains_telegram_login_phishing_language",
+        )
+    )
     if getattr(group_settings, "ai_scan_links_only", True) and not getattr(features, "contains_url", False):
-        return False
+        return risky_text_without_url
     return getattr(features, "risk_signal_count", 0) > 0
 
 
@@ -226,7 +237,6 @@ async def _choose_issue_merge_id(
         limit=12,
         status="open",
     )
-    candidates = [candidate for candidate in candidates if candidate.issue_type == issue_type]
     return await choose_support_merge_candidate_with_ai(
         kind="issue",
         text=normalized.text,

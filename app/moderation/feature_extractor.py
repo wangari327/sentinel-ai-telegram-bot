@@ -160,16 +160,16 @@ def extract_features(
         r"\b(?:hidden\s+cam|private\s+tape|full\s+tape|uncut\s+video|full\s+scene)\b",
         (
             r"\b(?:leaked?|caught|spotted|banned|deleted|exclusive|live|hidden)\b.{0,60}"
-            r"\b(?:naked|pussy|dick|f\s*cked|fucked|sex|swallowed|pounded|balls\s+deep)\b"
+            r"\b(?:naked|p\s*ssy|pussy|dick|f\s*cked|fucked|sex|swallowed|pounded|balls\s+deep)\b"
         ),
         (
             r"\b(?:step\s*sis|stepsis|stepmom|coworker|cousin|babysitter|maid|"
             r"roommate|gym\s+girl|masseuse|massageuse)\b.{0,90}"
-            r"\b(?:naked|xxx|pussy|dick|f\s*cked|fucked|swallowed|pounded|"
+            r"\b(?:naked|xxx|p\s*ssy|pussy|dick|f\s*cked|fucked|swallowed|pounded|"
             r"legs\s+wide|shower)\b"
         ),
         (
-            r"\b(?:naked|pussy|dick|f\s*cked|fucked|sex)\b.{0,60}"
+            r"\b(?:naked|p\s*ssy|pussy|dick|f\s*cked|fucked|sex)\b.{0,60}"
             r"\b(?:video|tape|cam|full|watch|unlock|scene)\b"
         ),
     ]

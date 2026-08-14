@@ -54,6 +54,12 @@ def combine_scores(
         score = max(score, 0.94)
     if features.high_risk_link and ai_result.label == "spam":
         score = max(score, min(1.0, ai_result.confidence + 0.04))
+    if (
+        features.contains_suspicious_adult_story_lure
+        and features.contains_adult_spam_cta
+        and ai_result.label == "spam"
+    ):
+        score = max(score, 0.90)
     if features.sender_trusted and not features.high_risk_link:
         score = min(score, 0.42)
     if features.sender_admin:

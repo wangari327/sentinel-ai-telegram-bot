@@ -90,7 +90,24 @@ BARE_TITLE_BLOCKLIST = {
     "thank you",
     "this is good",
     "wow",
+    "www",
     "yes",
+}
+TITLE_QUERY_BLOCKLIST = {
+    "help",
+    "it",
+    "link",
+    "links",
+    "me",
+    "movie",
+    "please",
+    "season",
+    "series",
+    "show",
+    "subtitle",
+    "subtitles",
+    "that",
+    "this",
 }
 HOWTO_WORDS = (
     "how to download",
@@ -126,6 +143,7 @@ STOP_PREFIXES = (
     "request",
     "send",
     "drop",
+    "for",
     "upload",
     "add",
     "search for",
@@ -155,11 +173,11 @@ def friendly_issue_label(issue_type: str | None) -> str:
 
 def detect_support_intent(text: str, *, allow_bare_title: bool = False) -> SupportIntent | None:
     lower = text.casefold()
-    if any(phrase in lower for phrase in HOWTO_WORDS):
+    if any(_contains_phrase(lower, phrase) for phrase in HOWTO_WORDS):
         return SupportIntent(kind="howto", title_query=_extract_title_query(text), category_hint=_category_hint(lower))
 
     for issue_type, phrases in ISSUE_TYPES.items():
-        if any(phrase in lower for phrase in phrases):
+        if any(_contains_phrase(lower, phrase) for phrase in phrases):
             return SupportIntent(
                 kind="issue",
                 title_query=_extract_title_query(text),
@@ -167,7 +185,7 @@ def detect_support_intent(text: str, *, allow_bare_title: bool = False) -> Suppo
                 issue_type=issue_type,
             )
 
-    if any(word in lower for word in REQUEST_WORDS):
+    if any(_contains_phrase(lower, word) for word in REQUEST_WORDS):
         title_query = _extract_title_query(text)
         if title_query:
             return SupportIntent(
@@ -180,6 +198,11 @@ def detect_support_intent(text: str, *, allow_bare_title: bool = False) -> Suppo
         if title_query:
             return SupportIntent(kind="bare_title", title_query=title_query)
     return None
+
+
+def _contains_phrase(lower_text: str, phrase: str) -> bool:
+    escaped = re.escape(phrase.casefold()).replace(r"\ ", r"\s+")
+    return bool(re.search(rf"(?<!\w){escaped}(?!\w)", lower_text))
 
 
 def _category_hint(lower: str) -> str | None:
@@ -195,11 +218,21 @@ def _extract_title_query(text: str) -> str | None:
     value = re.sub(
         r"\b(?:broken|not\s+working|dead\s+link|invalid\s+link|missing\s+episode|"
         r"episode\s+missing|banned|copyright|removed|taken\s+down|not\s+playing|"
-        r"cannot\s+play|won't\s+play|expired|expire|please\s+fix|fix|thanks)\b",
+        r"cannot\s+play|won't\s+play|sound|subtitles?|expired|expire|please\s+fix|"
+        r"fix|thanks)\b",
         " ",
         value,
         flags=re.IGNORECASE,
     )
+    value = re.sub(r"\b(?:season|series)\s*\d+\b", " ", value, flags=re.IGNORECASE)
+    value = re.sub(r"\bs\s*\d+\b", " ", value, flags=re.IGNORECASE)
+    value = re.sub(
+        r"\b(?:episode|ep)\s*\d+(?:\s*[-–]\s*\d+)?\b",
+        " ",
+        value,
+        flags=re.IGNORECASE,
+    )
+    value = re.sub(r"\be\s*\d+(?:\s*[-–]\s*\d+)?\b", " ", value, flags=re.IGNORECASE)
     value = normalize_title_query(value)
     lower = value.casefold()
     changed = True
@@ -217,6 +250,8 @@ def _extract_title_query(text: str) -> str | None:
     value = re.sub(r"^(?:the|a|an)\s+", "", value, flags=re.IGNORECASE)
     value = normalize_title_query(value)
     if len(value) < 2:
+        return None
+    if value.casefold() in TITLE_QUERY_BLOCKLIST:
         return None
     return value
 

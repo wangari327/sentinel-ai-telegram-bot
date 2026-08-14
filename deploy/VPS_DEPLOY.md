@@ -115,6 +115,8 @@ Sentinel group support lookups search the local iBOX catalog cache only, so norm
 
 With `SUPPORT_AI_INTENT_ENABLED=true`, Sentinel lets the configured AI provider decide whether fuzzy group messages are support-worthy instead of relying only on phrase parsing. Lower `SUPPORT_AI_INTENT_THRESHOLD` if it misses too much; raise it if it starts answering ordinary chatter.
 
+With `AI_SCAN_LINKS_ONLY=true`, normal low-risk chatter stays cheap, but severe no-link risk text such as adult clickbait lures, crypto scams, fake rewards, and login phishing language can still be escalated and deleted. The setting is no longer a free pass for text-only spam.
+
 With `PRIVATE_SUPPORT_ENABLED=true`, normal users can DM the bot for iBOX help and use Start-button shortcuts. Private spam, abusive messages, explicit bait, malicious code snippets, and unsupported media-only uploads are logged as private moderation events; after `PRIVATE_ABUSE_SILENCE_AFTER` strikes, Sentinel stops replying to that private user.
 
 `SUPPORT_REPLY_CLEANUP_SECONDS=86400` keeps group support replies around for one day before Sentinel deletes its own messages. Use `0` if you want those support replies to stay forever.
