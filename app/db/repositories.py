@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -20,6 +21,8 @@ from app.db.models import (
     TrainingExample,
     TrustedUser,
     TutorialAsset,
+    TvwebCatalogItem,
+    TvwebCatalogSync,
     User,
     UserViolation,
 )
@@ -616,6 +619,67 @@ def list_recent_support_requests(
     if group_id is not None:
         query = query.where(SupportRequest.group_id == group_id)
     return list(session.scalars(query).all())
+
+
+def _catalog_key(value: str) -> str:
+    value = re.sub(r"[^\w\s'&.-]+", " ", value, flags=re.UNICODE)
+    value = re.sub(r"\s+", " ", value).strip(" .-")
+    return value.casefold()[:255]
+
+
+def replace_tvweb_catalog(session: Session, items: list[Any]) -> int:
+    session.execute(delete(TvwebCatalogItem))
+    catalog_rows = [
+        TvwebCatalogItem(
+            tvweb_id=int(item.id),
+            title=str(item.title)[:255],
+            title_key=_catalog_key(str(item.title)),
+            episode_title=(str(item.episode_title)[:255] if item.episode_title else None),
+            category=str(item.category or "tv")[:32],
+            slug=str(item.slug)[:512],
+            year=item.year,
+            rating=item.rating,
+            download_link=item.download_link,
+            source_updated_at=getattr(item, "source_updated_at", None),
+        )
+        for item in items
+    ]
+    session.add_all(catalog_rows)
+    sync = get_or_create_tvweb_catalog_sync(session)
+    sync.last_refresh_at = datetime.now(tz=UTC)
+    sync.item_count = len(catalog_rows)
+    sync.last_error = None
+    session.flush()
+    return len(catalog_rows)
+
+
+def get_or_create_tvweb_catalog_sync(
+    session: Session,
+    label: str = "default",
+) -> TvwebCatalogSync:
+    sync = session.scalar(select(TvwebCatalogSync).where(TvwebCatalogSync.label == label))
+    if sync is None:
+        sync = TvwebCatalogSync(label=label, item_count=0)
+        session.add(sync)
+        session.flush()
+    return sync
+
+
+def get_tvweb_catalog_sync(
+    session: Session,
+    label: str = "default",
+) -> TvwebCatalogSync | None:
+    return session.scalar(select(TvwebCatalogSync).where(TvwebCatalogSync.label == label))
+
+
+def record_tvweb_catalog_error(session: Session, error: str) -> None:
+    sync = get_or_create_tvweb_catalog_sync(session)
+    sync.last_error = error[:2000]
+    session.flush()
+
+
+def count_tvweb_catalog_items(session: Session) -> int:
+    return int(session.scalar(select(func.count(TvwebCatalogItem.id))) or 0)
 
 
 def save_tutorial_asset(

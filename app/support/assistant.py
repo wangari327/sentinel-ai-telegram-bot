@@ -15,6 +15,11 @@ ISSUE_TYPES = {
 }
 REQUEST_WORDS = (
     "request",
+    "requesting",
+    "need",
+    "i need",
+    "can i get",
+    "send",
     "looking for",
     "find",
     "where can i",
@@ -24,6 +29,30 @@ REQUEST_WORDS = (
     "add",
     "search",
 )
+BARE_TITLE_BLOCKLIST = {
+    "admin",
+    "admins",
+    "bro",
+    "done",
+    "good",
+    "great",
+    "hello",
+    "hey",
+    "hi",
+    "lol",
+    "nice",
+    "no",
+    "ok",
+    "okay",
+    "please",
+    "pls",
+    "seen",
+    "thanks",
+    "thank you",
+    "this is good",
+    "wow",
+    "yes",
+}
 HOWTO_WORDS = (
     "how to download",
     "how do i download",
@@ -44,12 +73,18 @@ STOP_PREFIXES = (
     "plz",
     "can you",
     "could you",
+    "can i get",
     "do you have",
     "where can i find",
     "where can i watch",
     "where is",
     "i need",
+    "need",
+    "requesting",
+    "request for",
     "request",
+    "send",
+    "drop",
     "upload",
     "add",
     "search for",
@@ -71,7 +106,7 @@ class SupportReply:
     should_send_tutorial: bool = False
 
 
-def detect_support_intent(text: str) -> SupportIntent | None:
+def detect_support_intent(text: str, *, allow_bare_title: bool = False) -> SupportIntent | None:
     lower = text.casefold()
     if any(phrase in lower for phrase in HOWTO_WORDS):
         return SupportIntent(kind="howto", title_query=_extract_title_query(text), category_hint=_category_hint(lower))
@@ -93,6 +128,10 @@ def detect_support_intent(text: str) -> SupportIntent | None:
                 title_query=title_query,
                 category_hint=_category_hint(lower),
             )
+    if allow_bare_title:
+        title_query = _extract_bare_title_query(text)
+        if title_query:
+            return SupportIntent(kind="bare_title", title_query=title_query)
     return None
 
 
@@ -133,6 +172,25 @@ def _extract_title_query(text: str) -> str | None:
     return value
 
 
+def _extract_bare_title_query(text: str) -> str | None:
+    if re.search(r"https?://|www\.|@\w+|[/#]", text, flags=re.IGNORECASE):
+        return None
+    value = normalize_title_query(text.strip(" ?!.,:;\"'()[]{}"))
+    lower = value.casefold()
+    if lower in BARE_TITLE_BLOCKLIST:
+        return None
+    if not 3 <= len(value) <= 80:
+        return None
+    words = value.split()
+    if not words or len(words) > 6:
+        return None
+    if len(words) == 1 and lower in BARE_TITLE_BLOCKLIST:
+        return None
+    if not any(char.isalnum() for char in value):
+        return None
+    return value
+
+
 def build_support_reply(
     *,
     intent: SupportIntent,
@@ -150,7 +208,10 @@ def build_support_reply(
             should_send_tutorial=True,
         )
 
-    if intent.kind == "request":
+    if intent.kind == "bare_title" and not matches:
+        return None
+
+    if intent.kind in {"request", "bare_title"}:
         if matches:
             lines = ["Found this on iBOX TV:"]
             for item in matches[:3]:

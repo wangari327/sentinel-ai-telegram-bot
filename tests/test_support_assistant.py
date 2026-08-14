@@ -1,6 +1,10 @@
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session
+
 from app.config import load_settings
+from app.db.models import Base, TvwebCatalogItem
 from app.support.assistant import SupportReply, build_support_reply, detect_support_intent
-from app.support.ibox_search import IboxItem, item_url, search_url
+from app.support.ibox_search import IboxItem, item_url, search_tvweb_cache, search_url
 from app.support.responder import render_support_reply, select_support_chat_config
 
 
@@ -11,6 +15,24 @@ def test_detects_movie_request() -> None:
     assert intent.kind == "request"
     assert intent.category_hint == "movie"
     assert intent.title_query == "Dune Part Two"
+
+
+def test_detects_requesting_prefix_cleanly() -> None:
+    intent = detect_support_intent("requesting AVatar")
+
+    assert intent is not None
+    assert intent.kind == "request"
+    assert intent.title_query == "AVatar"
+
+
+def test_bare_title_detection_is_opt_in() -> None:
+    assert detect_support_intent("Avatar") is None
+
+    intent = detect_support_intent("Avatar", allow_bare_title=True)
+
+    assert intent is not None
+    assert intent.kind == "bare_title"
+    assert intent.title_query == "Avatar"
 
 
 def test_detects_broken_link_issue() -> None:
@@ -67,6 +89,34 @@ def test_search_url_uses_category_domains() -> None:
 
     assert search_url(settings, "naruto", "anime").startswith("https://anime.ibox-tv.com")
     assert search_url(settings, "dune", "movie").startswith("https://movies.ibox-tv.com")
+
+
+def test_cached_tvweb_lookup_finds_title_without_upstream_query() -> None:
+    engine = create_engine("sqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+    settings = load_settings({})
+    with Session(engine) as session:
+        session.add(
+            TvwebCatalogItem(
+                tvweb_id=1,
+                title="Avatar",
+                title_key="avatar",
+                episode_title=None,
+                category="movie",
+                slug="avatar",
+                year=2009,
+                rating=7.9,
+                download_link=None,
+            )
+        )
+        session.commit()
+
+        intent = detect_support_intent("requesting Avatar")
+        assert intent is not None
+        matches = search_tvweb_cache(session=session, settings=settings, query=intent.title_query or "")
+
+    assert matches
+    assert matches[0].title == "Avatar"
 
 
 def test_support_responder_selects_hcnsec_chat_config() -> None:

@@ -19,12 +19,14 @@ from app.bot.support_actions import start_cleanup_loop
 from app.config import settings
 from app.db.session import init_db
 from app.logging import configure_logging, get_logger
+from app.services.tvweb_cache import start_tvweb_cache_loop
 
 logger = get_logger(__name__)
 
 bot: Bot | None = None
 dispatcher: Dispatcher | None = None
 cleanup_task: asyncio.Task[None] | None = None
+tvweb_cache_task: asyncio.Task[None] | None = None
 
 
 def build_dispatcher() -> Dispatcher:
@@ -54,7 +56,8 @@ async def lifespan(_: FastAPI):
     configure_logging(settings.log_level)
     if settings.auto_migrate:
         init_db()
-    global bot, dispatcher, cleanup_task
+    global bot, dispatcher, cleanup_task, tvweb_cache_task
+    tvweb_cache_task = start_tvweb_cache_loop(settings=settings)
     if settings.bot_token:
         bot = Bot(
             token=settings.bot_token,
@@ -66,6 +69,8 @@ async def lifespan(_: FastAPI):
     else:
         logger.warning("BOT_TOKEN is empty; webhook will reject Telegram updates")
     yield
+    if tvweb_cache_task:
+        tvweb_cache_task.cancel()
     if cleanup_task:
         cleanup_task.cancel()
     if bot:
@@ -112,10 +117,12 @@ async def run_polling() -> None:
     )
     dp = build_dispatcher()
     cleanup = start_cleanup_loop(bot=polling_bot)
+    tvweb_cache = start_tvweb_cache_loop(settings=settings)
     try:
         await dp.start_polling(polling_bot)
     finally:
         cleanup.cancel()
+        tvweb_cache.cancel()
         await polling_bot.session.close()
 
 

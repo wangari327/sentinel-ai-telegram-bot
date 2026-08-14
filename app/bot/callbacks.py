@@ -11,6 +11,7 @@ from aiogram import F, Router
 from aiogram.exceptions import TelegramAPIError
 from aiogram.types import CallbackQuery
 from sqlalchemy import select
+from sqlalchemy.orm import Session
 
 from app.bot.keyboards import owner_console_keyboard
 from app.bot.permissions import user_is_chat_admin
@@ -117,9 +118,9 @@ def _masked(value: str | None) -> str:
     return f"{value[:10]}...{value[-6:]}"
 
 
-def tvweb_config_text() -> str:
+def tvweb_config_text(cache_status: str | None = None) -> str:
     status = _masked(settings.tvweb_database_url)
-    return (
+    text = (
         "Website DB setup\n"
         f"Current TVWEB_DATABASE_URL: {status}\n\n"
         "From your website .env, copy the value named DATABASE_URL.\n"
@@ -130,6 +131,24 @@ def tvweb_config_text() -> str:
         "tv_shows table through TVWEB_DATABASE_URL.\n\n"
         "After editing /opt/sentinel-ai-telegram-bot/.env, restart with:\n"
         "docker compose -f compose.vps.yml up -d --build"
+    )
+    if cache_status:
+        text = f"{text}\n\n{cache_status}"
+    return text
+
+
+def tvweb_cache_status_text(session: Session) -> str:
+    sync = repositories.get_tvweb_catalog_sync(session)
+    count = repositories.count_tvweb_catalog_items(session)
+    if not sync:
+        return f"Local cache: {count} items, never refreshed."
+    last_refresh = sync.last_refresh_at.isoformat() if sync.last_refresh_at else "never"
+    error = f"\nLast refresh error: {_short(sync.last_error, 200)}" if sync.last_error else ""
+    return (
+        f"Local cache: {count} items.\n"
+        f"Last refresh: {last_refresh}\n"
+        f"Recorded item count: {sync.item_count}"
+        f"{error}"
     )
 
 
@@ -290,7 +309,7 @@ async def handle_console_callback(callback: CallbackQuery) -> None:
             else:
                 text = "No tutorial saved yet. Forward the tutorial video here with /tutorial_save in the caption."
         elif action == "tvweb":
-            text = tvweb_config_text()
+            text = tvweb_config_text(tvweb_cache_status_text(session))
         elif action == "persistence":
             text = persistence_text()
         else:

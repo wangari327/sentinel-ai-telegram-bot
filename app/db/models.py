@@ -260,6 +260,33 @@ class SupportRequest(TimestampMixin, Base):
     occurrence_count: Mapped[int] = mapped_column(Integer, default=1)
 
 
+class TvwebCatalogItem(TimestampMixin, Base):
+    __tablename__ = "tvweb_catalog_items"
+    __table_args__ = (UniqueConstraint("tvweb_id"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tvweb_id: Mapped[int] = mapped_column(Integer, index=True)
+    title: Mapped[str] = mapped_column(String(255), index=True)
+    title_key: Mapped[str] = mapped_column(String(255), index=True)
+    episode_title: Mapped[str | None] = mapped_column(String(255))
+    category: Mapped[str] = mapped_column(String(32), index=True)
+    slug: Mapped[str] = mapped_column(String(512), index=True)
+    year: Mapped[int | None] = mapped_column(Integer)
+    rating: Mapped[float | None] = mapped_column(Float)
+    download_link: Mapped[str | None] = mapped_column(Text)
+    source_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class TvwebCatalogSync(TimestampMixin, Base):
+    __tablename__ = "tvweb_catalog_sync"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    label: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    last_refresh_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    item_count: Mapped[int] = mapped_column(Integer, default=0)
+    last_error: Mapped[str | None] = mapped_column(Text)
+
+
 class TutorialAsset(TimestampMixin, Base):
     __tablename__ = "tutorial_assets"
 

@@ -63,6 +63,15 @@ def test_deepseek_config_uses_deepseek_specific_values() -> None:
     assert settings.deepseek_model == "deepseek-chat"
 
 
+def test_tvweb_cache_config_defaults() -> None:
+    settings = load_settings({})
+
+    assert settings.tvweb_cache_enabled
+    assert settings.tvweb_cache_refresh_interval_minutes == 360
+    assert settings.tvweb_cache_refresh_times == ()
+    assert settings.tvweb_cache_refresh_limit == 50000
+
+
 def test_app_json_is_valid_heroku_button_json() -> None:
     data = json.loads(Path("app.json").read_text(encoding="utf-8"))
 

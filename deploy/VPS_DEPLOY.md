@@ -86,6 +86,10 @@ DEFAULT_NOTIFY_ADMIN_ID=762308466
 HCNSEC_API_KEY=your-provider-key
 TVWEB_DATABASE_URL=paste-the-website-DATABASE_URL-value-here
 TUTORIAL_DUMP_CHAT_ID=-1003743973576
+TVWEB_CACHE_ENABLED=true
+TVWEB_CACHE_REFRESH_INTERVAL_MINUTES=360
+TVWEB_CACHE_REFRESH_TIMES=02:00,08:00,14:00,20:00
+TVWEB_CACHE_REFRESH_LIMIT=50000
 ```
 
 Generate a secret:
@@ -99,6 +103,8 @@ Find your Telegram user ID with a bot such as `@userinfobot`. Find a group ID by
 For iBOX lookup, copy the website `.env` value named `DATABASE_URL` into Sentinel as `TVWEB_DATABASE_URL`. Do not use the website Mongo or Redis variables for this feature. The bot can remind you through the owner-only private command `/tvweb_config`.
 
 `TUTORIAL_DUMP_CHAT_ID=-1003743973576` is the default dump channel. Make the bot an admin in that channel, then forward the tutorial video/document to the bot privately with `/tutorial_save` in the caption.
+
+Sentinel refreshes a local iBOX catalog cache on startup, every `TVWEB_CACHE_REFRESH_INTERVAL_MINUTES`, and at the UTC times in `TVWEB_CACHE_REFRESH_TIMES`. Group support lookups search the local cache only, so normal chat traffic does not hammer the website database. DM `/support_status` to see cache count, last refresh, and any refresh error.
 
 ## 4. Docker Compose Deployment
 

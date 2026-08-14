@@ -74,6 +74,7 @@ Private owner commands:
 - `/deauthorize <chat_id>` - remove DB authorization for a chat.
 - `/tutorial_save` - save a forwarded video/document as the default support tutorial.
 - `/tvweb_config` - show exactly which website env value to paste for iBOX lookup.
+- `/support_status` - show iBOX support config and local catalog cache status.
 - `/persistence` or `/backups` - show how bot data survives updates and reinstalls.
 
 ## Modes
@@ -106,11 +107,17 @@ TVWEB_SITE_BASE_URL=https://ibox-tv.com
 TVWEB_ANIME_BASE_URL=https://anime.ibox-tv.com
 TVWEB_MOVIES_BASE_URL=https://movies.ibox-tv.com
 TUTORIAL_DUMP_CHAT_ID=-1003743973576
+TVWEB_CACHE_ENABLED=true
+TVWEB_CACHE_REFRESH_INTERVAL_MINUTES=360
+TVWEB_CACHE_REFRESH_TIMES=02:00,08:00,14:00,20:00
+TVWEB_CACHE_REFRESH_LIMIT=50000
 ```
 
 To save a tutorial, forward the video/document to the bot privately with `/tutorial_save` in the caption. When `TUTORIAL_DUMP_CHAT_ID` is set, Sentinel also copies that tutorial into the dump channel so the media stays easy to audit. When users ask how to download or play files, the bot sends the saved tutorial if available.
 
 Support answers are factual first, then AI-polished when `SUPPORT_AI_REPLIES=true` and your configured `AI_PROVIDER` supports chat completions. If the provider fails, the bot falls back to the plain factual reply.
+
+Sentinel does not query the website database for every group message. It refreshes a local `tvweb_catalog_items` cache on startup, every `TVWEB_CACHE_REFRESH_INTERVAL_MINUTES`, and at any UTC times listed in `TVWEB_CACHE_REFRESH_TIMES`. Group messages search that local cache only. DM `/tvweb_config` or `/support_status` to see the cache count, last refresh, and last refresh error.
 
 ## AI Providers
 
@@ -359,6 +366,10 @@ DEFAULT_NOTIFY_ADMIN_ID=762308466
 HCNSEC_API_KEY=
 TVWEB_DATABASE_URL=
 TUTORIAL_DUMP_CHAT_ID=-1003743973576
+TVWEB_CACHE_ENABLED=true
+TVWEB_CACHE_REFRESH_INTERVAL_MINUTES=360
+TVWEB_CACHE_REFRESH_TIMES=02:00,08:00,14:00,20:00
+TVWEB_CACHE_REFRESH_LIMIT=50000
 ```
 
 Do not commit the real `.env`. If an API key or bot token was pasted into chat, logs, or Git history, rotate it with the provider and update only the VPS `.env`.

@@ -45,6 +45,12 @@ def _csv_ints(value: str | None) -> frozenset[int]:
     return frozenset(ids)
 
 
+def _csv_strings(value: str | None) -> tuple[str, ...]:
+    if not value:
+        return ()
+    return tuple(item.strip() for item in value.replace(";", ",").split(",") if item.strip())
+
+
 def normalize_database_url(url: str) -> str:
     if url.startswith("postgres://"):
         return "postgresql+psycopg://" + url.removeprefix("postgres://")
@@ -111,6 +117,10 @@ class Settings:
     tvweb_anime_base_url: str
     tvweb_movies_base_url: str
     tutorial_dump_chat_id: int | None
+    tvweb_cache_enabled: bool
+    tvweb_cache_refresh_interval_minutes: int
+    tvweb_cache_refresh_times: tuple[str, ...]
+    tvweb_cache_refresh_limit: int
 
     @property
     def webhook_path(self) -> str:
@@ -238,6 +248,12 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         tvweb_anime_base_url=source.get("TVWEB_ANIME_BASE_URL", "https://anime.ibox-tv.com"),
         tvweb_movies_base_url=source.get("TVWEB_MOVIES_BASE_URL", "https://movies.ibox-tv.com"),
         tutorial_dump_chat_id=_optional_int(source.get("TUTORIAL_DUMP_CHAT_ID")),
+        tvweb_cache_enabled=_bool(source.get("TVWEB_CACHE_ENABLED"), True),
+        tvweb_cache_refresh_interval_minutes=_int(
+            source.get("TVWEB_CACHE_REFRESH_INTERVAL_MINUTES"), 360
+        ),
+        tvweb_cache_refresh_times=_csv_strings(source.get("TVWEB_CACHE_REFRESH_TIMES")),
+        tvweb_cache_refresh_limit=_int(source.get("TVWEB_CACHE_REFRESH_LIMIT"), 50000),
     )
 
 

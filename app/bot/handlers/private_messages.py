@@ -4,7 +4,12 @@ from aiogram import F, Router
 from aiogram.exceptions import TelegramAPIError
 from aiogram.types import Message
 
-from app.bot.callbacks import make_signed_token, persistence_text, tvweb_config_text
+from app.bot.callbacks import (
+    make_signed_token,
+    persistence_text,
+    tvweb_cache_status_text,
+    tvweb_config_text,
+)
 from app.bot.keyboards import owner_console_keyboard, training_label_keyboard
 from app.config import settings
 from app.db import repositories
@@ -29,7 +34,15 @@ async def on_private_message(message: Message) -> None:
         if not settings.user_is_owner_admin(user_id):
             await message.answer("Owner-only setup note. Tiny velvet rope situation.")
             return
-        await message.answer(tvweb_config_text())
+        with session_scope() as session:
+            await message.answer(tvweb_config_text(tvweb_cache_status_text(session)))
+        return
+    if text.startswith("/support_status"):
+        if not settings.user_is_owner_admin(user_id):
+            await message.answer("Owner-only support status.")
+            return
+        with session_scope() as session:
+            await message.answer(tvweb_config_text(tvweb_cache_status_text(session)))
         return
     if text.startswith(("/persistence", "/backups")):
         if not settings.user_is_owner_admin(user_id):

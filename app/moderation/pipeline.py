@@ -26,7 +26,7 @@ from app.moderation.rules import compute_rule_score
 from app.moderation.scoring import Decision, combine_scores, decide_action
 from app.moderation.similarity import retrieve_examples
 from app.support.assistant import build_support_reply, detect_support_intent
-from app.support.ibox_search import search_tvweb
+from app.support.ibox_search import search_tvweb_cache
 from app.support.responder import render_support_reply
 
 
@@ -82,12 +82,16 @@ async def maybe_handle_support_message(
 ) -> bool:
     if not settings.support_enabled:
         return False
-    intent = detect_support_intent(normalized.text)
+    intent = detect_support_intent(
+        normalized.text,
+        allow_bare_title=settings.tvweb_cache_enabled,
+    )
     if intent is None:
         return False
     matches = []
     if intent.title_query:
-        matches = search_tvweb(
+        matches = search_tvweb_cache(
+            session=session,
             settings=settings,
             query=intent.title_query,
             category=intent.category_hint,
