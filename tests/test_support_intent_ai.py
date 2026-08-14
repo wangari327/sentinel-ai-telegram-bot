@@ -1,5 +1,5 @@
 from app.config import load_settings
-from app.support.intent_ai import _intent_from_data
+from app.support.intent_ai import _intent_from_data, _merge_candidate_from_data
 
 
 def test_ai_intent_accepts_fuzzy_title_request() -> None:
@@ -75,3 +75,27 @@ def test_ai_intent_rejects_low_confidence() -> None:
     )
 
     assert intent is None
+
+
+def test_ai_merge_candidate_accepts_known_candidate_id() -> None:
+    settings = load_settings({})
+
+    candidate_id = _merge_candidate_from_data(
+        {"candidate_id": 42, "confidence": 0.88, "reason": "same title"},
+        candidates=[{"id": 42, "title": "Lioness"}],
+        settings=settings,
+    )
+
+    assert candidate_id == 42
+
+
+def test_ai_merge_candidate_rejects_unknown_candidate_id() -> None:
+    settings = load_settings({})
+
+    candidate_id = _merge_candidate_from_data(
+        {"candidate_id": 99, "confidence": 0.88, "reason": "same title"},
+        candidates=[{"id": 42, "title": "Lioness"}],
+        settings=settings,
+    )
+
+    assert candidate_id is None

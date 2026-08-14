@@ -7,6 +7,7 @@ import hmac
 import json
 import time
 from dataclasses import dataclass
+from html import escape
 
 from aiogram import F, Router
 from aiogram.exceptions import TelegramAPIError
@@ -14,15 +15,21 @@ from aiogram.types import CallbackQuery
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.bot.keyboards import owner_console_keyboard
+from app.bot.keyboards import (
+    group_management_keyboard,
+    owner_console_keyboard,
+    support_issues_keyboard,
+    support_requests_keyboard,
+)
 from app.bot.permissions import user_is_chat_admin
-from app.bot.support_actions import send_tutorial_if_available
+from app.bot.support_actions import send_ephemeral_message, send_tutorial_if_available
 from app.config import settings
 from app.db import repositories
 from app.db.models import ModerationEvent
 from app.db.session import session_scope
 from app.moderation.normalizer import normalize_message_parts
 from app.services.tvweb_cache import refresh_tvweb_catalog_cache
+from app.support.assistant import friendly_issue_label
 from app.training.pending import consume_pending_training
 
 router = Router(name="callbacks")
@@ -197,6 +204,70 @@ def persistence_text() -> str:
     )
 
 
+def _mention_user(user_id: int | None, fallback: str = "there") -> str:
+    if user_id is None:
+        return escape(fallback)
+    return f'<a href="tg://user?id={user_id}">{escape(fallback)}</a>'
+
+
+def _issue_title(issue: object) -> str:
+    return str(
+        getattr(issue, "matched_title", None)
+        or getattr(issue, "title_query", None)
+        or getattr(issue, "normalized_text", "that item")
+    )
+
+
+def _request_title(request: object) -> str:
+    return str(
+        getattr(request, "matched_title", None)
+        or getattr(request, "title_query", None)
+        or "that title"
+    )
+
+
+def _groups_console_text(groups: list[object], *, prefix: str | None = None) -> str:
+    if not groups:
+        body = "No groups seen yet."
+    else:
+        rows = [
+            (
+                f"#{group.id} | "
+                f"{'authorized' if group.authorized else 'pending'} | "
+                f"{group.telegram_chat_id} | "
+                f"{_short(getattr(group, 'title', None), 32)}"
+            )
+            for group in groups
+        ]
+        body = "ID | Status | Chat ID | Title\n" + "\n".join(rows)
+    return f"{prefix}\n\n{body}" if prefix else body
+
+
+def _issues_console_text(issues: list[object]) -> str:
+    if not issues:
+        return "No open support issues. Suspiciously peaceful."
+    return "Open support issues\n" + "\n".join(
+        (
+            f"#{issue.id} {friendly_issue_label(getattr(issue, 'issue_type', None))} "
+            f"x{issue.occurrence_count}: "
+            f"{_short(_issue_title(issue), 52)}"
+        )
+        for issue in issues
+    )
+
+
+def _requests_console_text(requests: list[object]) -> str:
+    if not requests:
+        return "No open content requests."
+    return "Open content requests\n" + "\n".join(
+        (
+            f"#{request.id} x{request.occurrence_count}: "
+            f"{_short(_request_title(request), 52)}"
+        )
+        for request in requests
+    )
+
+
 @router.callback_query(F.data == "public:tutorial")
 async def handle_public_tutorial_callback(callback: CallbackQuery) -> None:
     message = callback.message
@@ -215,6 +286,164 @@ async def handle_public_tutorial_callback(callback: CallbackQuery) -> None:
         await _answer(callback, "No tutorial is saved yet.")
         return
     await _answer(callback, "Tutorial sent.")
+
+
+@router.callback_query(F.data.startswith("group:"))
+async def handle_group_management_callback(callback: CallbackQuery) -> None:
+    if not settings.user_is_owner_admin(_callback_user_id(callback)):
+        await _answer(callback, "Owner console only.")
+        return
+    parts = (callback.data or "").split(":", 2)
+    if len(parts) != 3:
+        await _answer(callback, "Invalid group action.")
+        return
+    _, action, group_id_raw = parts
+    try:
+        group_id = int(group_id_raw)
+    except ValueError:
+        await _answer(callback, "Invalid group ID.")
+        return
+
+    with session_scope() as session:
+        if action == "allow":
+            group = repositories.set_group_authorized_by_id(session, group_id, True)
+            result = "authorized"
+        elif action == "deny":
+            group = repositories.set_group_authorized_by_id(session, group_id, False)
+            result = "deauthorized"
+        elif action == "remove":
+            group = repositories.get_group_by_id(session, group_id)
+            if group is not None:
+                repositories.forget_group_data(session, group.id)
+            result = "removed"
+        else:
+            await _answer(callback, "Unknown group action.")
+            return
+        groups = repositories.list_groups(session)[:10]
+        text = _groups_console_text(groups, prefix=f"Group {group_id} {result}.")
+        reply_markup = group_management_keyboard(groups)
+
+    if callback.message:
+        try:
+            await callback.message.edit_text(text, reply_markup=reply_markup, parse_mode=None)
+        except TelegramAPIError:
+            pass
+    await _answer(callback, "Updated.")
+
+
+@router.callback_query(F.data.startswith("issue:"))
+async def handle_issue_management_callback(callback: CallbackQuery) -> None:
+    if not settings.user_is_owner_admin(_callback_user_id(callback)):
+        await _answer(callback, "Owner console only.")
+        return
+    parts = (callback.data or "").split(":", 2)
+    if len(parts) != 3:
+        await _answer(callback, "Invalid issue action.")
+        return
+    _, action, issue_id_raw = parts
+    try:
+        issue_id = int(issue_id_raw)
+    except ValueError:
+        await _answer(callback, "Invalid issue ID.")
+        return
+
+    notice_sent = False
+    with session_scope() as session:
+        issue = repositories.get_support_issue(session, issue_id)
+        if issue is None:
+            text = "Issue is already gone. Very mysterious, very tidy."
+        elif action == "resolve":
+            repositories.set_support_issue_status(session, issue_id, "resolved")
+            notice_text = (
+                f"{_mention_user(issue.sender_user_id, 'quick update')}: "
+                f"{escape(_issue_title(issue))} is marked fixed for "
+                f"{escape(friendly_issue_label(issue.issue_type))}. Try it again when you can."
+            )
+            notice = await send_ephemeral_message(
+                bot=callback.bot,
+                session=session,
+                chat_id=issue.telegram_chat_id,
+                text=notice_text,
+                settings=settings,
+                purpose="support_resolution_notice",
+                parse_mode="HTML",
+                cleanup=False,
+            )
+            notice_sent = notice is not None
+            text = f"Issue #{issue_id} resolved. Group notice sent={notice_sent}."
+        elif action == "dismiss":
+            repositories.set_support_issue_status(session, issue_id, "dismissed")
+            text = f"Issue #{issue_id} dismissed."
+        else:
+            await _answer(callback, "Unknown issue action.")
+            return
+        issues = repositories.list_recent_support_issues(session, limit=10)
+        text = f"{text}\n\n{_issues_console_text(issues)}"
+        reply_markup = support_issues_keyboard(issues)
+
+    if callback.message:
+        try:
+            await callback.message.edit_text(text, reply_markup=reply_markup, parse_mode=None)
+        except TelegramAPIError:
+            pass
+    await _answer(callback, "Updated.")
+
+
+@router.callback_query(F.data.startswith("request:"))
+async def handle_request_management_callback(callback: CallbackQuery) -> None:
+    if not settings.user_is_owner_admin(_callback_user_id(callback)):
+        await _answer(callback, "Owner console only.")
+        return
+    parts = (callback.data or "").split(":", 2)
+    if len(parts) != 3:
+        await _answer(callback, "Invalid request action.")
+        return
+    _, action, request_id_raw = parts
+    try:
+        request_id = int(request_id_raw)
+    except ValueError:
+        await _answer(callback, "Invalid request ID.")
+        return
+
+    notice_sent = False
+    with session_scope() as session:
+        request = repositories.get_support_request(session, request_id)
+        if request is None:
+            text = "Request is already gone. The dashboard ate its vegetables."
+        elif action == "resolve":
+            repositories.set_support_request_status(session, request_id, "resolved")
+            notice_text = (
+                f"{_mention_user(request.sender_user_id, 'quick update')}: "
+                f"{escape(_request_title(request))} has been handled. Search iBOX again."
+            )
+            notice = await send_ephemeral_message(
+                bot=callback.bot,
+                session=session,
+                chat_id=request.telegram_chat_id,
+                text=notice_text,
+                settings=settings,
+                purpose="support_resolution_notice",
+                parse_mode="HTML",
+                cleanup=False,
+            )
+            notice_sent = notice is not None
+            text = f"Request #{request_id} resolved. Group notice sent={notice_sent}."
+        elif action == "dismiss":
+            repositories.set_support_request_status(session, request_id, "dismissed")
+            text = f"Request #{request_id} dismissed."
+        else:
+            await _answer(callback, "Unknown request action.")
+            return
+        requests = repositories.list_recent_support_requests(session, limit=10)
+        text = f"{text}\n\n{_requests_console_text(requests)}"
+        reply_markup = support_requests_keyboard(requests)
+
+    if callback.message:
+        try:
+            await callback.message.edit_text(text, reply_markup=reply_markup, parse_mode=None)
+        except TelegramAPIError:
+            pass
+    await _answer(callback, "Updated.")
 
 
 @router.callback_query(F.data.startswith("review:"))
@@ -321,6 +550,7 @@ async def handle_console_callback(callback: CallbackQuery) -> None:
             except TelegramAPIError:
                 pass
         return
+    reply_markup = owner_console_keyboard()
     with session_scope() as session:
         if action == "stats":
             groups = repositories.list_groups(session)
@@ -336,32 +566,16 @@ async def handle_console_callback(callback: CallbackQuery) -> None:
             )
         elif action == "groups":
             groups = repositories.list_groups(session)[:10]
-            if not groups:
-                text = "No groups seen yet."
-            else:
-                rows = [
-                    f"{'yes' if group.authorized else 'no '} | {group.telegram_chat_id} | {_short(group.title, 32)}"
-                    for group in groups
-                ]
-                text = "Authorized | Chat ID | Title\n" + "\n".join(rows)
+            text = _groups_console_text(groups)
+            reply_markup = group_management_keyboard(groups)
         elif action == "issues":
             issues = repositories.list_recent_support_issues(session, limit=10)
-            if not issues:
-                text = "No support issues logged yet."
-            else:
-                text = "Recent support issues\n" + "\n".join(
-                    f"#{issue.id} {issue.issue_type} x{issue.occurrence_count}: {_short(issue.title_query or issue.normalized_text, 52)}"
-                    for issue in issues
-                )
+            text = _issues_console_text(issues)
+            reply_markup = support_issues_keyboard(issues)
         elif action == "requests":
             requests = repositories.list_recent_support_requests(session, limit=10)
-            if not requests:
-                text = "No content requests logged yet."
-            else:
-                text = "Recent content requests\n" + "\n".join(
-                    f"#{request.id} {request.status} x{request.occurrence_count}: {_short(request.title_query, 52)}"
-                    for request in requests
-                )
+            text = _requests_console_text(requests)
+            reply_markup = support_requests_keyboard(requests)
         elif action == "history":
             events = repositories.list_recent_moderation_events(session, limit=10)
             if not events:
@@ -387,7 +601,7 @@ async def handle_console_callback(callback: CallbackQuery) -> None:
         try:
             await callback.message.edit_text(
                 text,
-                reply_markup=owner_console_keyboard(),
+                reply_markup=reply_markup,
                 parse_mode=None,
             )
         except TelegramAPIError:

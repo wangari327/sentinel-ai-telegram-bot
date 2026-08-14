@@ -463,6 +463,19 @@ def list_groups(session: Session) -> list[Group]:
     return list(session.scalars(select(Group).order_by(Group.created_at.desc())).all())
 
 
+def get_group_by_id(session: Session, group_id: int) -> Group | None:
+    return session.scalar(select(Group).where(Group.id == group_id))
+
+
+def set_group_authorized_by_id(session: Session, group_id: int, authorized: bool) -> Group | None:
+    group = get_group_by_id(session, group_id)
+    if group is None:
+        return None
+    group.authorized = authorized
+    session.flush()
+    return group
+
+
 def set_group_authorized(
     session: Session,
     *,
@@ -483,6 +496,62 @@ def set_group_authorized(
     return group
 
 
+def _support_title_key(value: str | None) -> str:
+    if not value:
+        return ""
+    value = value.casefold()
+    value = re.sub(r"\b(?:season|series)\s*\d+\b", " ", value)
+    value = re.sub(r"\bs\s*\d+\b", " ", value)
+    value = re.sub(r"\b(?:episode|ep)\s*\d+(?:\s*[-–]\s*\d+)?\b", " ", value)
+    value = re.sub(r"\be\s*\d+(?:\s*[-–]\s*\d+)?\b", " ", value)
+    value = re.sub(
+        r"\b(?:requesting|request|please|pls|plz|fix|link|links|broken|expired|"
+        r"missing|banned|removed|episode|season|movie|series|show|tv)\b",
+        " ",
+        value,
+    )
+    value = re.sub(r"[^\w\s]+", " ", value, flags=re.UNICODE)
+    return re.sub(r"\s+", " ", value).strip()[:255]
+
+
+def _support_item_title(matched_title: str | None, title_query: str | None) -> str | None:
+    return matched_title or title_query
+
+
+def find_support_request_merge_candidate(
+    session: Session,
+    *,
+    group_id: int,
+    title_query: str,
+    status: str,
+    category_hint: str | None,
+    matched_show_id: int | None = None,
+    matched_title: str | None = None,
+) -> SupportRequest | None:
+    query = select(SupportRequest).where(
+        SupportRequest.group_id == group_id,
+        SupportRequest.status == status,
+    )
+    if matched_show_id is not None:
+        existing = session.scalar(query.where(SupportRequest.matched_show_id == matched_show_id))
+        if existing:
+            return existing
+
+    incoming_key = _support_title_key(_support_item_title(matched_title, title_query))
+    if not incoming_key:
+        return None
+    candidates = list(session.scalars(query.limit(50)).all())
+    for candidate in candidates:
+        if category_hint and candidate.category_hint and candidate.category_hint != category_hint:
+            continue
+        candidate_key = _support_title_key(
+            _support_item_title(candidate.matched_title, candidate.title_query)
+        )
+        if candidate_key == incoming_key:
+            return candidate
+    return None
+
+
 def upsert_support_request(
     session: Session,
     *,
@@ -496,19 +565,33 @@ def upsert_support_request(
     normalized_text: str,
     matched_show_id: int | None = None,
     matched_title: str | None = None,
+    merge_request_id: int | None = None,
 ) -> SupportRequest:
-    existing = session.scalar(
-        select(SupportRequest).where(
-            SupportRequest.group_id == group_id,
-            SupportRequest.title_query == title_query,
-            SupportRequest.category_hint == category_hint,
-            SupportRequest.status == status,
+    existing = (
+        session.scalar(
+            select(SupportRequest).where(
+                SupportRequest.id == merge_request_id,
+                SupportRequest.group_id == group_id,
+                SupportRequest.status == status,
+            )
         )
+        if merge_request_id is not None
+        else None
     )
+    if existing is None:
+        existing = find_support_request_merge_candidate(
+            session,
+            group_id=group_id,
+            title_query=title_query,
+            status=status,
+            category_hint=category_hint,
+            matched_show_id=matched_show_id,
+            matched_title=matched_title,
+        )
     if existing:
         existing.occurrence_count += 1
-        existing.telegram_message_id = telegram_message_id
-        existing.sender_user_id = sender_user_id
+        existing.telegram_message_id = existing.telegram_message_id or telegram_message_id
+        existing.sender_user_id = existing.sender_user_id or sender_user_id
         existing.normalized_text = normalized_text
         existing.matched_show_id = matched_show_id or existing.matched_show_id
         existing.matched_title = matched_title or existing.matched_title
@@ -531,6 +614,41 @@ def upsert_support_request(
     return request
 
 
+def find_support_issue_merge_candidate(
+    session: Session,
+    *,
+    group_id: int,
+    issue_type: str,
+    title_query: str | None,
+    category_hint: str | None,
+    matched_show_id: int | None = None,
+    matched_title: str | None = None,
+) -> SupportIssue | None:
+    query = select(SupportIssue).where(
+        SupportIssue.group_id == group_id,
+        SupportIssue.issue_type == issue_type,
+        SupportIssue.status == "open",
+    )
+    if matched_show_id is not None:
+        existing = session.scalar(query.where(SupportIssue.matched_show_id == matched_show_id))
+        if existing:
+            return existing
+
+    incoming_key = _support_title_key(_support_item_title(matched_title, title_query))
+    if not incoming_key:
+        return None
+    candidates = list(session.scalars(query.limit(50)).all())
+    for candidate in candidates:
+        if category_hint and candidate.category_hint and candidate.category_hint != category_hint:
+            continue
+        candidate_key = _support_title_key(
+            _support_item_title(candidate.matched_title, candidate.title_query)
+        )
+        if candidate_key == incoming_key:
+            return candidate
+    return None
+
+
 def upsert_support_issue(
     session: Session,
     *,
@@ -545,20 +663,33 @@ def upsert_support_issue(
     notes: str | None = None,
     matched_show_id: int | None = None,
     matched_title: str | None = None,
+    merge_issue_id: int | None = None,
 ) -> SupportIssue:
-    existing = session.scalar(
-        select(SupportIssue).where(
-            SupportIssue.group_id == group_id,
-            SupportIssue.issue_type == issue_type,
-            SupportIssue.title_query == title_query,
-            SupportIssue.category_hint == category_hint,
-            SupportIssue.status == "open",
+    existing = (
+        session.scalar(
+            select(SupportIssue).where(
+                SupportIssue.id == merge_issue_id,
+                SupportIssue.group_id == group_id,
+                SupportIssue.status == "open",
+            )
         )
+        if merge_issue_id is not None
+        else None
     )
+    if existing is None:
+        existing = find_support_issue_merge_candidate(
+            session,
+            group_id=group_id,
+            issue_type=issue_type,
+            title_query=title_query,
+            category_hint=category_hint,
+            matched_show_id=matched_show_id,
+            matched_title=matched_title,
+        )
     if existing:
         existing.occurrence_count += 1
-        existing.telegram_message_id = telegram_message_id
-        existing.sender_user_id = sender_user_id
+        existing.telegram_message_id = existing.telegram_message_id or telegram_message_id
+        existing.sender_user_id = existing.sender_user_id or sender_user_id
         existing.normalized_text = normalized_text
         existing.notes = notes or existing.notes
         existing.matched_show_id = matched_show_id or existing.matched_show_id
@@ -602,10 +733,13 @@ def list_recent_support_issues(
     group_id: int | None = None,
     *,
     limit: int = 10,
+    status: str | None = "open",
 ) -> list[SupportIssue]:
     query = select(SupportIssue).order_by(SupportIssue.updated_at.desc()).limit(limit)
     if group_id is not None:
         query = query.where(SupportIssue.group_id == group_id)
+    if status is not None:
+        query = query.where(SupportIssue.status == status)
     return list(session.scalars(query).all())
 
 
@@ -614,11 +748,51 @@ def list_recent_support_requests(
     group_id: int | None = None,
     *,
     limit: int = 10,
+    status: str | None = "open",
 ) -> list[SupportRequest]:
     query = select(SupportRequest).order_by(SupportRequest.updated_at.desc()).limit(limit)
     if group_id is not None:
         query = query.where(SupportRequest.group_id == group_id)
+    if status is not None:
+        query = query.where(SupportRequest.status == status)
     return list(session.scalars(query).all())
+
+
+def get_support_issue(session: Session, issue_id: int) -> SupportIssue | None:
+    return session.scalar(select(SupportIssue).where(SupportIssue.id == issue_id))
+
+
+def get_support_request(session: Session, request_id: int) -> SupportRequest | None:
+    return session.scalar(select(SupportRequest).where(SupportRequest.id == request_id))
+
+
+def set_support_issue_status(
+    session: Session,
+    issue_id: int,
+    status: str,
+    *,
+    notes: str | None = None,
+) -> SupportIssue | None:
+    issue = get_support_issue(session, issue_id)
+    if issue is None:
+        return None
+    issue.status = status
+    issue.notes = notes or issue.notes
+    session.flush()
+    return issue
+
+
+def set_support_request_status(
+    session: Session,
+    request_id: int,
+    status: str,
+) -> SupportRequest | None:
+    request = get_support_request(session, request_id)
+    if request is None:
+        return None
+    request.status = status
+    session.flush()
+    return request
 
 
 def _catalog_key(value: str) -> str:
@@ -728,6 +902,22 @@ def record_bot_sent_message(
     session.add(sent)
     session.flush()
     return sent
+
+
+def list_bot_sent_messages(
+    session: Session,
+    *,
+    chat_id: int,
+    purposes: set[str] | frozenset[str] | tuple[str, ...],
+) -> list[BotSentMessage]:
+    return list(
+        session.scalars(
+            select(BotSentMessage).where(
+                BotSentMessage.chat_id == chat_id,
+                BotSentMessage.purpose.in_(purposes),
+            )
+        ).all()
+    )
 
 
 def due_bot_sent_messages(session: Session, now: datetime) -> list[BotSentMessage]:

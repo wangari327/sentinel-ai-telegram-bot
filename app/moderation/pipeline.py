@@ -25,9 +25,12 @@ from app.moderation.normalizer import NormalizedMessage, normalize_telegram_mess
 from app.moderation.rules import compute_rule_score
 from app.moderation.scoring import Decision, combine_scores, decide_action
 from app.moderation.similarity import retrieve_examples
-from app.support.assistant import build_support_reply, detect_support_intent
+from app.support.assistant import SupportIntent, build_support_reply, detect_support_intent
 from app.support.ibox_search import search_tvweb_cache
-from app.support.intent_ai import classify_support_intent_with_ai
+from app.support.intent_ai import (
+    choose_support_merge_candidate_with_ai,
+    classify_support_intent_with_ai,
+)
 from app.support.responder import render_support_reply
 
 
@@ -104,7 +107,67 @@ async def maybe_handle_support_message(
             query=intent.title_query,
             category=intent.category_hint,
         )
-    reply = build_support_reply(intent=intent, matches=matches, settings=settings)
+    occurrence_count: int | None = None
+    if intent.kind == "request" and intent.title_query:
+        status = "found" if matches else "open" if settings.tvweb_database_url else "suggested_search"
+        merge_request_id = await _choose_request_merge_id(
+            session=session,
+            settings=settings,
+            group_id=group.id,
+            intent=intent,
+            normalized=normalized,
+            status=status,
+            matched_show_id=matches[0].id if matches else None,
+            matched_title=matches[0].display_title if matches else None,
+        )
+        request = repositories.upsert_support_request(
+            session,
+            group_id=group.id,
+            telegram_chat_id=group.telegram_chat_id,
+            telegram_message_id=int(getattr(message, "message_id", 0)),
+            sender_user_id=sender_user_id,
+            title_query=intent.title_query,
+            category_hint=intent.category_hint,
+            status=status,
+            normalized_text=normalized.text,
+            matched_show_id=matches[0].id if matches else None,
+            matched_title=matches[0].display_title if matches else None,
+            merge_request_id=merge_request_id,
+        )
+        occurrence_count = request.occurrence_count
+    if intent.kind == "issue":
+        issue_type = intent.issue_type or "general"
+        merge_issue_id = await _choose_issue_merge_id(
+            session=session,
+            settings=settings,
+            group_id=group.id,
+            intent=intent,
+            normalized=normalized,
+            matched_show_id=matches[0].id if matches else None,
+            matched_title=matches[0].display_title if matches else None,
+        )
+        issue = repositories.upsert_support_issue(
+            session,
+            group_id=group.id,
+            telegram_chat_id=group.telegram_chat_id,
+            telegram_message_id=int(getattr(message, "message_id", 0)),
+            sender_user_id=sender_user_id,
+            issue_type=issue_type,
+            title_query=intent.title_query,
+            category_hint=intent.category_hint,
+            normalized_text=normalized.text,
+            matched_show_id=matches[0].id if matches else None,
+            matched_title=matches[0].display_title if matches else None,
+            merge_issue_id=merge_issue_id,
+        )
+        occurrence_count = issue.occurrence_count
+
+    reply = build_support_reply(
+        intent=intent,
+        matches=matches,
+        settings=settings,
+        occurrence_count=occurrence_count,
+    )
     if reply is None:
         return False
     reply_text = await render_support_reply(
@@ -114,35 +177,6 @@ async def maybe_handle_support_message(
         settings=settings,
         user_text=normalized.text,
     )
-
-    if intent.kind == "request" and intent.title_query:
-        repositories.upsert_support_request(
-            session,
-            group_id=group.id,
-            telegram_chat_id=group.telegram_chat_id,
-            telegram_message_id=int(getattr(message, "message_id", 0)),
-            sender_user_id=sender_user_id,
-            title_query=intent.title_query,
-            category_hint=intent.category_hint,
-            status="found" if matches else "open" if settings.tvweb_database_url else "suggested_search",
-            normalized_text=normalized.text,
-            matched_show_id=matches[0].id if matches else None,
-            matched_title=matches[0].display_title if matches else None,
-        )
-    if intent.kind == "issue":
-        repositories.upsert_support_issue(
-            session,
-            group_id=group.id,
-            telegram_chat_id=group.telegram_chat_id,
-            telegram_message_id=int(getattr(message, "message_id", 0)),
-            sender_user_id=sender_user_id,
-            issue_type=intent.issue_type or "general",
-            title_query=intent.title_query,
-            category_hint=intent.category_hint,
-            normalized_text=normalized.text,
-            matched_show_id=matches[0].id if matches else None,
-            matched_title=matches[0].display_title if matches else None,
-        )
 
     await send_ephemeral_message(
         bot=bot,
@@ -162,6 +196,104 @@ async def maybe_handle_support_message(
         )
     schedule_cleanup(bot=bot, delay_seconds=settings.support_reply_cleanup_seconds)
     return True
+
+
+async def _choose_issue_merge_id(
+    *,
+    session: Session,
+    settings: Settings,
+    group_id: int,
+    intent: SupportIntent,
+    normalized: NormalizedMessage,
+    matched_show_id: int | None,
+    matched_title: str | None,
+) -> int | None:
+    issue_type = intent.issue_type or "general"
+    deterministic = repositories.find_support_issue_merge_candidate(
+        session,
+        group_id=group_id,
+        issue_type=issue_type,
+        title_query=intent.title_query,
+        category_hint=intent.category_hint,
+        matched_show_id=matched_show_id,
+        matched_title=matched_title,
+    )
+    if deterministic:
+        return deterministic.id
+    candidates = repositories.list_recent_support_issues(
+        session,
+        group_id=group_id,
+        limit=12,
+        status="open",
+    )
+    candidates = [candidate for candidate in candidates if candidate.issue_type == issue_type]
+    return await choose_support_merge_candidate_with_ai(
+        kind="issue",
+        text=normalized.text,
+        title_query=intent.title_query,
+        issue_type=issue_type,
+        candidates=[_issue_merge_candidate(candidate) for candidate in candidates],
+        settings=settings,
+    )
+
+
+async def _choose_request_merge_id(
+    *,
+    session: Session,
+    settings: Settings,
+    group_id: int,
+    intent: SupportIntent,
+    normalized: NormalizedMessage,
+    status: str,
+    matched_show_id: int | None,
+    matched_title: str | None,
+) -> int | None:
+    if not intent.title_query:
+        return None
+    deterministic = repositories.find_support_request_merge_candidate(
+        session,
+        group_id=group_id,
+        title_query=intent.title_query,
+        status=status,
+        category_hint=intent.category_hint,
+        matched_show_id=matched_show_id,
+        matched_title=matched_title,
+    )
+    if deterministic:
+        return deterministic.id
+    candidates = repositories.list_recent_support_requests(
+        session,
+        group_id=group_id,
+        limit=12,
+        status=status,
+    )
+    return await choose_support_merge_candidate_with_ai(
+        kind="request",
+        text=normalized.text,
+        title_query=intent.title_query,
+        issue_type=None,
+        candidates=[_request_merge_candidate(candidate) for candidate in candidates],
+        settings=settings,
+    )
+
+
+def _issue_merge_candidate(issue: object) -> dict[str, object]:
+    return {
+        "id": issue.id,
+        "issue_type": issue.issue_type,
+        "title": issue.matched_title or issue.title_query,
+        "message": issue.normalized_text[:180],
+        "count": issue.occurrence_count,
+    }
+
+
+def _request_merge_candidate(request: object) -> dict[str, object]:
+    return {
+        "id": request.id,
+        "title": request.matched_title or request.title_query,
+        "message": request.normalized_text[:180],
+        "count": request.occurrence_count,
+    }
 
 
 def _message_sender_context(

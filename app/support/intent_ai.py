@@ -65,6 +65,52 @@ async def classify_support_intent_with_ai(
     return None
 
 
+async def choose_support_merge_candidate_with_ai(
+    *,
+    kind: str,
+    text: str,
+    title_query: str | None,
+    issue_type: str | None,
+    candidates: list[dict[str, object]],
+    settings: Settings,
+) -> int | None:
+    if not settings.support_ai_intent_enabled or not candidates:
+        return None
+    chat_config = select_support_chat_config(settings, require_ai_replies=False)
+    if chat_config is None:
+        return None
+
+    trimmed_candidates = candidates[:12]
+    payload: dict[str, Any] = {
+        "model": chat_config.model,
+        "messages": _merge_messages(
+            kind=kind,
+            text=text[: settings.support_ai_intent_max_text_chars],
+            title_query=title_query,
+            issue_type=issue_type,
+            candidates=trimmed_candidates,
+        ),
+        "temperature": 0,
+        "max_tokens": 140,
+    }
+    headers = {"Content-Type": "application/json"}
+    if chat_config.api_key:
+        headers["Authorization"] = f"Bearer {chat_config.api_key}"
+
+    async with httpx.AsyncClient(timeout=chat_config.timeout_seconds) as client:
+        try:
+            response = await client.post(
+                f"{chat_config.base_url}/chat/completions",
+                headers=headers,
+                json=payload,
+            )
+            response.raise_for_status()
+            data = _parse_json(_choice_text(response.json()))
+        except (KeyError, TypeError, ValueError, httpx.HTTPError):
+            return None
+    return _merge_candidate_from_data(data, candidates=trimmed_candidates, settings=settings)
+
+
 def _messages(text: str) -> list[dict[str, str]]:
     return [
         {
@@ -92,6 +138,38 @@ def _messages(text: str) -> list[dict[str, str]]:
         {
             "role": "user",
             "content": f"Message:\n{text}",
+        },
+    ]
+
+
+def _merge_messages(
+    *,
+    kind: str,
+    text: str,
+    title_query: str | None,
+    issue_type: str | None,
+    candidates: list[dict[str, object]],
+) -> list[dict[str, str]]:
+    return [
+        {
+            "role": "system",
+            "content": (
+                "You decide whether a new iBOX TV support report should merge into an "
+                "existing open dashboard item. Return JSON only: "
+                '{"candidate_id":null|number,"confidence":0.0,"reason":"short"}. '
+                "Merge only when they refer to the same underlying movie/show/anime and "
+                "the same practical request or issue. Treat title variants, season/episode "
+                "suffixes, spelling/case differences, and 'fix link' vs 'expired link' as "
+                "mergeable. Do not merge different titles or different problem types."
+            ),
+        },
+        {
+            "role": "user",
+            "content": (
+                f"New item kind={kind}, title_query={title_query}, issue_type={issue_type}\n"
+                f"New message:\n{text}\n\n"
+                f"Existing candidates:\n{json.dumps(candidates, ensure_ascii=False)}"
+            ),
         },
     ]
 
@@ -132,6 +210,26 @@ def _intent_from_data(data: dict[str, Any], *, settings: Settings) -> SupportInt
             issue_type=issue_type or "general",
         )
     return None
+
+
+def _merge_candidate_from_data(
+    data: dict[str, Any],
+    *,
+    candidates: list[dict[str, object]],
+    settings: Settings,
+) -> int | None:
+    confidence = float(data.get("confidence") or 0)
+    if confidence < max(settings.support_ai_intent_threshold, 0.74):
+        return None
+    candidate_id = data.get("candidate_id")
+    if candidate_id is None:
+        return None
+    try:
+        selected = int(candidate_id)
+    except (TypeError, ValueError):
+        return None
+    valid_ids = {int(candidate["id"]) for candidate in candidates if candidate.get("id") is not None}
+    return selected if selected in valid_ids else None
 
 
 def _choice_text(data: dict[str, Any]) -> str:

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
+from app.db.models import Group, SupportIssue, SupportRequest
+
 
 def review_keyboard(token: str) -> InlineKeyboardMarkup:
     rows = [
@@ -52,31 +54,78 @@ def training_label_keyboard(token: str) -> InlineKeyboardMarkup:
     )
 
 
-def owner_console_keyboard() -> InlineKeyboardMarkup:
+def owner_console_keyboard(
+    extra_rows: list[list[InlineKeyboardButton]] | None = None,
+) -> InlineKeyboardMarkup:
+    rows = [
+        [
+            InlineKeyboardButton(text="Stats", callback_data="console:stats"),
+            InlineKeyboardButton(text="Groups", callback_data="console:groups"),
+        ],
+        [
+            InlineKeyboardButton(text="Issues", callback_data="console:issues"),
+            InlineKeyboardButton(text="Requests", callback_data="console:requests"),
+        ],
+        [
+            InlineKeyboardButton(text="Spam history", callback_data="console:history"),
+            InlineKeyboardButton(text="Tutorial", callback_data="console:tutorial"),
+        ],
+        [
+            InlineKeyboardButton(text="Website DB", callback_data="console:tvweb"),
+            InlineKeyboardButton(text="Support status", callback_data="console:support_status"),
+        ],
+        [
+            InlineKeyboardButton(text="Refresh catalog", callback_data="console:refresh_tvweb"),
+            InlineKeyboardButton(text="Backups", callback_data="console:persistence"),
+        ],
+    ]
+    if extra_rows:
+        rows = [*extra_rows, [InlineKeyboardButton(text="Console", callback_data="console:stats")], *rows]
     return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(text="Stats", callback_data="console:stats"),
-                InlineKeyboardButton(text="Groups", callback_data="console:groups"),
-            ],
-            [
-                InlineKeyboardButton(text="Issues", callback_data="console:issues"),
-                InlineKeyboardButton(text="Requests", callback_data="console:requests"),
-            ],
-            [
-                InlineKeyboardButton(text="Spam history", callback_data="console:history"),
-                InlineKeyboardButton(text="Tutorial", callback_data="console:tutorial"),
-            ],
-            [
-                InlineKeyboardButton(text="Website DB", callback_data="console:tvweb"),
-                InlineKeyboardButton(text="Support status", callback_data="console:support_status"),
-            ],
-            [
-                InlineKeyboardButton(text="Refresh catalog", callback_data="console:refresh_tvweb"),
-                InlineKeyboardButton(text="Backups", callback_data="console:persistence"),
-            ],
-        ]
+        inline_keyboard=rows
     )
+
+
+def group_management_keyboard(groups: list[Group]) -> InlineKeyboardMarkup:
+    rows: list[list[InlineKeyboardButton]] = []
+    for group in groups[:8]:
+        if group.authorized:
+            rows.append(
+                [
+                    InlineKeyboardButton(text=f"Deauthorize {group.id}", callback_data=f"group:deny:{group.id}"),
+                    InlineKeyboardButton(text=f"Remove {group.id}", callback_data=f"group:remove:{group.id}"),
+                ]
+            )
+        else:
+            rows.append(
+                [
+                    InlineKeyboardButton(text=f"Authorize {group.id}", callback_data=f"group:allow:{group.id}"),
+                    InlineKeyboardButton(text=f"Remove {group.id}", callback_data=f"group:remove:{group.id}"),
+                ]
+            )
+    return owner_console_keyboard(rows)
+
+
+def support_issues_keyboard(issues: list[SupportIssue]) -> InlineKeyboardMarkup:
+    rows = [
+        [
+            InlineKeyboardButton(text=f"Fixed {issue.id}", callback_data=f"issue:resolve:{issue.id}"),
+            InlineKeyboardButton(text=f"Dismiss {issue.id}", callback_data=f"issue:dismiss:{issue.id}"),
+        ]
+        for issue in issues[:8]
+    ]
+    return owner_console_keyboard(rows)
+
+
+def support_requests_keyboard(requests: list[SupportRequest]) -> InlineKeyboardMarkup:
+    rows = [
+        [
+            InlineKeyboardButton(text=f"Filled {request.id}", callback_data=f"request:resolve:{request.id}"),
+            InlineKeyboardButton(text=f"Dismiss {request.id}", callback_data=f"request:dismiss:{request.id}"),
+        ]
+        for request in requests[:8]
+    ]
+    return owner_console_keyboard(rows)
 
 
 def public_support_keyboard(settings: object) -> InlineKeyboardMarkup:

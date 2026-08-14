@@ -17,6 +17,7 @@ from app.bot.keyboards import (
     public_support_keyboard,
     training_label_keyboard,
 )
+from app.bot.support_actions import send_flow_message
 from app.config import settings
 from app.db import repositories
 from app.db.session import session_scope
@@ -37,7 +38,16 @@ async def on_private_message(message: Message) -> None:
         if not is_owner:
             await message.answer("Owner console is only available to OWNER_ADMIN_IDS.")
             return
-        await message.answer("SentinelAI owner console", reply_markup=owner_console_keyboard())
+        with session_scope() as session:
+            await send_flow_message(
+                bot=message.bot,
+                session=session,
+                chat_id=message.chat.id,
+                text="SentinelAI owner console",
+                settings=settings,
+                purpose="owner_console_flow",
+                reply_markup=owner_console_keyboard(),
+            )
         return
     if text.startswith("/tvweb_config"):
         if not is_owner:
@@ -132,11 +142,16 @@ async def on_private_message(message: Message) -> None:
         return
     if not is_owner:
         if message.text and message.text.startswith("/"):
-            await message.answer(
-                private_user_help_text(),
-                reply_markup=public_support_keyboard(settings),
-                disable_web_page_preview=True,
-            )
+            with session_scope() as session:
+                await send_flow_message(
+                    bot=message.bot,
+                    session=session,
+                    chat_id=message.chat.id,
+                    text=private_user_help_text(),
+                    settings=settings,
+                    purpose="public_support_flow",
+                    reply_markup=public_support_keyboard(settings),
+                )
             return
         with session_scope() as session:
             await handle_private_user_support(
@@ -163,10 +178,16 @@ async def on_private_message(message: Message) -> None:
         admin_user_id=message.from_user.id if message.from_user else 0,
         ttl_seconds=15 * 60,
     )
-    await message.answer(
-        "Add this message as a training example?",
-        reply_markup=training_label_keyboard(token),
-    )
+    with session_scope() as session:
+        await send_flow_message(
+            bot=message.bot,
+            session=session,
+            chat_id=message.chat.id,
+            text="Add this message as a training example?",
+            settings=settings,
+            purpose="training_flow",
+            reply_markup=training_label_keyboard(token),
+        )
 
 
 def _message_file(message: Message) -> tuple[str | None, str]:

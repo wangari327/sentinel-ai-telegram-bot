@@ -60,6 +60,23 @@ def test_detects_howto_request() -> None:
     assert intent.kind == "howto"
 
 
+def test_issue_reply_uses_human_label_not_internal_slug() -> None:
+    settings = load_settings({})
+    intent = detect_support_intent("Fix Lioness")
+
+    reply = build_support_reply(
+        intent=intent,
+        matches=[],
+        settings=settings,
+        occurrence_count=2,
+    )
+
+    assert reply is not None
+    assert "broken_link" not in reply.text
+    assert "link problem" in reply.text
+    assert "2" in reply.text
+
+
 def test_builds_search_reply_for_found_item() -> None:
     settings = load_settings({"TVWEB_SITE_BASE_URL": "https://ibox-tv.com"})
     item = IboxItem(

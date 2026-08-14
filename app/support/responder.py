@@ -158,8 +158,11 @@ def _messages(
             "role": "system",
             "content": (
                 "Rewrite Telegram group support replies for iBOX TV. Voice: "
-                f"{settings.support_tone}. Be brief, chatty, and useful. Do not be mean. "
+                f"{settings.support_tone}. Be brief, chatty, and useful. Add a small "
+                "human flourish when it fits, and vary the wording so replies do not "
+                "feel copied from a form. Do not be mean. "
                 "Do not use profanity, adult jokes, markdown tables, or 'as an AI'. "
+                "Do not expose internal labels like broken_link or missing_episode. "
                 "Do not invent availability, episode status, site behavior, admins, or links. "
                 "Keep every URL exactly as provided and add no new URLs. "
                 "Return only the message that should be sent to the group."

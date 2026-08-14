@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import random
 import re
 from dataclasses import dataclass
 from html import escape
@@ -24,6 +25,33 @@ ISSUE_TYPES = {
     "banned": ("banned", "copyright", "removed", "taken down", "takedown"),
     "playback": ("not playing", "cannot play", "won't play", "sound", "subtitles"),
 }
+ISSUE_LABELS = {
+    "broken_link": "link problem",
+    "missing_episode": "missing episode",
+    "banned": "banned or removed item",
+    "playback": "playback problem",
+    "general": "issue",
+}
+ISSUE_REPLY_OPENERS = (
+    "Logged this {label} for {title}. Tiny clipboard, serious business.",
+    "Got it: {title} has a {label}. I have added it to the fix pile.",
+    "{title} is now on the {label} list. Very glamorous admin paperwork.",
+)
+ISSUE_REPEAT_OPENERS = (
+    "Already on it: {title} is still marked for a {label}. This is report #{count}.",
+    "{title} is already on the fix pile for a {label}. Report #{count}, noted.",
+    "Yep, {title} is already logged for a {label}. The complaint counter is now {count}.",
+)
+REQUEST_OPENERS = (
+    "No sign of {title} on iBOX yet. I have filed it as a request.",
+    "{title} is not in the catalog yet, so I have put it on the request pile.",
+    "Could not find {title} yet. Request logged, clipboard mildly pleased.",
+)
+REQUEST_REPEAT_OPENERS = (
+    "{title} is already on the request pile. That makes {count} people asking.",
+    "Already got {title} in requests. Count is now {count}. Democracy, but with buffering.",
+    "{title} is still pending in requests. This is vote #{count}.",
+)
 REQUEST_WORDS = (
     "request",
     "requesting",
@@ -121,6 +149,10 @@ class SupportReply:
     should_send_tutorial: bool = False
 
 
+def friendly_issue_label(issue_type: str | None) -> str:
+    return ISSUE_LABELS.get(issue_type or "general", "issue")
+
+
 def detect_support_intent(text: str, *, allow_bare_title: bool = False) -> SupportIntent | None:
     lower = text.casefold()
     if any(phrase in lower for phrase in HOWTO_WORDS):
@@ -213,6 +245,7 @@ def build_support_reply(
     intent: SupportIntent,
     matches: list[IboxItem],
     settings: Settings,
+    occurrence_count: int | None = None,
 ) -> SupportReply | None:
     if intent.kind == "howto":
         return SupportReply(
@@ -242,22 +275,50 @@ def build_support_reply(
                         f"{escape(search_url(settings, intent.title_query, intent.category_hint))}"
                     )
                 )
+            if occurrence_count and occurrence_count > 1:
+                return SupportReply(
+                    text=_format_variant(
+                        REQUEST_REPEAT_OPENERS,
+                        title=escape(intent.title_query),
+                        count=str(occurrence_count),
+                    )
+                )
             return SupportReply(
-                text=(
-                    f"I could not find {escape(intent.title_query)} on iBOX TV yet. "
-                    "I have recorded it as a request."
+                text=_format_variant(
+                    REQUEST_OPENERS,
+                    title=escape(intent.title_query),
                 )
             )
 
     if intent.kind == "issue":
+        label = friendly_issue_label(intent.issue_type)
+        title = escape(matches[0].display_title if matches else intent.title_query or "that item")
+        if occurrence_count and occurrence_count > 1:
+            return SupportReply(
+                text=_format_variant(
+                    ISSUE_REPEAT_OPENERS,
+                    label=escape(label),
+                    title=title,
+                    count=str(occurrence_count),
+                )
+            )
         if matches:
             return SupportReply(
-                text=(
-                    f"I have logged the {escape(intent.issue_type or 'issue')} report for "
-                    f"{escape(matches[0].display_title)}."
+                text=_format_variant(
+                    ISSUE_REPLY_OPENERS,
+                    label=escape(label),
+                    title=title,
                 )
             )
         return SupportReply(
-            text=f"I have logged this {escape(intent.issue_type or 'issue')} report for review."
+            text=_format_variant(
+                ISSUE_REPLY_OPENERS,
+                label=escape(label),
+                title=title,
+            )
         )
     return None
+
+
+def _format_variant(variants: tuple[str, ...], **values: str) -> str:
+    return random.choice(variants).format(**values)

@@ -8,6 +8,7 @@ from sqlalchemy import select
 
 from app.bot.keyboards import mode_keyboard, owner_console_keyboard, public_support_keyboard
 from app.bot.permissions import get_bot_permissions, permissions_warning, user_is_chat_admin
+from app.bot.support_actions import send_flow_message
 from app.config import settings
 from app.db import repositories
 from app.db.models import Domain, GroupSettings
@@ -48,16 +49,27 @@ async def _require_admin(message: Message) -> bool:
 async def start(message: Message) -> None:
     if message.chat.type == "private":
         if settings.user_is_owner_admin(message.from_user.id if message.from_user else None):
-            await message.answer(
-                "SentinelAI owner console. No slash-command treasure hunt required.",
-                reply_markup=owner_console_keyboard(),
-            )
+            with session_scope() as session:
+                await send_flow_message(
+                    bot=message.bot,
+                    session=session,
+                    chat_id=message.chat.id,
+                    text="SentinelAI owner console. No slash-command treasure hunt required.",
+                    settings=settings,
+                    purpose="owner_console_flow",
+                    reply_markup=owner_console_keyboard(),
+                )
             return
-        await message.answer(
-            private_user_help_text(),
-            reply_markup=public_support_keyboard(settings),
-            disable_web_page_preview=True,
-        )
+        with session_scope() as session:
+            await send_flow_message(
+                bot=message.bot,
+                session=session,
+                chat_id=message.chat.id,
+                text=private_user_help_text(),
+                settings=settings,
+                purpose="public_support_flow",
+                reply_markup=public_support_keyboard(settings),
+            )
         return
     await setup(message)
 
@@ -67,11 +79,16 @@ async def help_command(message: Message) -> None:
     if message.chat.type == "private" and not settings.user_is_owner_admin(
         message.from_user.id if message.from_user else None
     ):
-        await message.answer(
-            private_user_help_text(),
-            reply_markup=public_support_keyboard(settings),
-            disable_web_page_preview=True,
-        )
+        with session_scope() as session:
+            await send_flow_message(
+                bot=message.bot,
+                session=session,
+                chat_id=message.chat.id,
+                text=private_user_help_text(),
+                settings=settings,
+                purpose="public_support_flow",
+                reply_markup=public_support_keyboard(settings),
+            )
         return
     await message.answer(
         "Commands: /setup, /status, /mode, /thresholds, /train, /examples, "
@@ -216,11 +233,16 @@ async def train(message: Message) -> None:
     if message.chat.type == "private" and not settings.user_is_owner_admin(
         message.from_user.id if message.from_user else None
     ):
-        await message.answer(
-            private_user_help_text(),
-            reply_markup=public_support_keyboard(settings),
-            disable_web_page_preview=True,
-        )
+        with session_scope() as session:
+            await send_flow_message(
+                bot=message.bot,
+                session=session,
+                chat_id=message.chat.id,
+                text=private_user_help_text(),
+                settings=settings,
+                purpose="public_support_flow",
+                reply_markup=public_support_keyboard(settings),
+            )
         return
     await message.answer(
         "Forward a suspicious or legitimate message to me privately. I will ask whether "

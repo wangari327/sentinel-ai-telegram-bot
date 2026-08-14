@@ -70,7 +70,9 @@ Use `LEAVE_UNAUTHORIZED_CHATS=true` if you want the bot to leave groups it was a
 Private owner controls:
 
 - Press Start in the bot DM, or send `/start`, to open the button console for stats, groups, support issues, requests, history, tutorial status, website DB status, cache refresh, and backups.
-- `/panel` - reopen the same button console if the message gets buried.
+- The owner console is button-first: the Groups view can authorize, deauthorize, or remove seen chats; Issues and Requests views can mark items fixed or dismiss them.
+- New `/start`, `/panel`, support, and training flows clean up older open bot panels in that same private chat before posting the fresh buttons.
+- `/panel` - fallback command to reopen the same button console if the message gets buried.
 - `/authorize <chat_id>` - authorize a chat from private DM.
 - `/deauthorize <chat_id>` - remove DB authorization for a chat.
 - `/tutorial_save` - save a forwarded video/document as the default support tutorial.
@@ -96,6 +98,8 @@ Admin notifications are private DM review messages with action buttons. The admi
 When `SUPPORT_ENABLED=true`, SentinelAI also watches non-spam group messages for lightweight support intents: movie/show requests, download/play tutorial questions, missing episodes, broken links, banned/removed items, and playback complaints. It replies only when a message clearly looks like support traffic, then deletes its own support replies after `SUPPORT_REPLY_CLEANUP_SECONDS`.
 
 If `TVWEB_DATABASE_URL` is configured, the bot searches the website `tv_shows` table and can steer users to iBOX TV results. If no match is found, it records the request so you can review demand later from `/panel`. Use a read-only database user for this connection where possible.
+
+Repeated support reports are merged instead of duplicated. Sentinel first checks catalog IDs and normalized title variants, then asks the configured AI provider whether fuzzy reports describe the same underlying show/movie/anime and the same practical issue. The dashboard shows the occurrence count so you can see when a broken link or request is getting noisy.
 
 From the website `.env`, use the value named `DATABASE_URL` and add it to Sentinel as `TVWEB_DATABASE_URL`. Do not use `MONGO_URI_1`, `MONGO_URI_2`, `MONGO_DB_NAME`, `MONGO_COL_NAME`, or `REDIS_URL` for this feature. The private owner command `/tvweb_config` prints this reminder from the bot.
 
@@ -128,6 +132,8 @@ Support intent is AI-assisted when `SUPPORT_AI_INTENT_ENABLED=true`. The rule pa
 Private user support is enabled with `PRIVATE_SUPPORT_ENABLED=true`. Normal users who press Start in the bot DM get iBOX support buttons and can ask the same search/request/issue/tutorial questions privately. Private spam, abusive messages, explicit bait, malicious code snippets, and unsupported media-only uploads are logged as private moderation events; after `PRIVATE_ABUSE_SILENCE_AFTER` strikes, Sentinel stops replying to that private user.
 
 `SUPPORT_REPLY_CLEANUP_SECONDS=86400` keeps group support replies around for one day before Sentinel deletes its own messages. Set it to `0` to disable cleanup, or lower it if a group gets noisy.
+
+When you mark an issue or request as Fixed from the owner dashboard, Sentinel removes it from the open dashboard and posts a fresh group update tagging the original reporter when Telegram allows it. Those resolution notices are not auto-deleted, so people can see that the issue was handled. Dismiss clears the dashboard item without notifying the group.
 
 Support answers are factual first, then AI-polished when `SUPPORT_AI_REPLIES=true` and your configured `AI_PROVIDER` supports chat completions. If the provider fails, the bot falls back to the plain factual reply.
 

@@ -5,10 +5,13 @@ from datetime import UTC, datetime, timedelta
 
 from aiogram import Bot
 from aiogram.exceptions import TelegramAPIError
+from aiogram.types import InlineKeyboardMarkup
 from sqlalchemy.orm import Session
 
 from app.config import Settings
 from app.db import repositories
+
+FLOW_PURPOSES = frozenset({"owner_console_flow", "public_support_flow", "training_flow"})
 
 
 async def send_ephemeral_message(
@@ -20,13 +23,83 @@ async def send_ephemeral_message(
     settings: Settings,
     reply_to_message_id: int | None = None,
     purpose: str = "support_reply",
+    parse_mode: str | None = "HTML",
+    cleanup: bool = True,
 ) -> object | None:
     try:
         sent = await bot.send_message(
             chat_id=chat_id,
             text=text,
             reply_to_message_id=reply_to_message_id,
+            parse_mode=parse_mode,
             disable_web_page_preview=True,
+        )
+    except TelegramAPIError:
+        return None
+    repositories.record_bot_sent_message(
+        session,
+        chat_id=chat_id,
+        message_id=int(getattr(sent, "message_id", 0)),
+        purpose=purpose,
+        delete_after=(
+            datetime.now(tz=UTC) + timedelta(seconds=settings.support_reply_cleanup_seconds)
+            if cleanup and settings.support_reply_cleanup_seconds > 0
+            else None
+        ),
+    )
+    return sent
+
+
+async def delete_tracked_messages(
+    *,
+    bot: object,
+    session: Session,
+    chat_id: int,
+    purposes: set[str] | frozenset[str] | tuple[str, ...],
+) -> int:
+    deleted = 0
+    sent_messages = repositories.list_bot_sent_messages(
+        session,
+        chat_id=chat_id,
+        purposes=purposes,
+    )
+    for sent in sent_messages:
+        try:
+            await bot.delete_message(chat_id=sent.chat_id, message_id=sent.message_id)
+            deleted += 1
+        except TelegramAPIError:
+            pass
+        repositories.delete_bot_sent_message_record(session, sent.id)
+    return deleted
+
+
+async def send_flow_message(
+    *,
+    bot: object,
+    session: Session,
+    chat_id: int,
+    text: str,
+    settings: Settings,
+    purpose: str,
+    reply_markup: InlineKeyboardMarkup | None = None,
+    parse_mode: str | None = None,
+    disable_web_page_preview: bool = True,
+    cleanup_previous: bool = True,
+) -> object | None:
+    if cleanup_previous:
+        await delete_tracked_messages(
+            bot=bot,
+            session=session,
+            chat_id=chat_id,
+            purposes=FLOW_PURPOSES,
+        )
+    try:
+        sent = await bot.send_message(
+            chat_id=chat_id,
+            text=text,
+            reply_markup=reply_markup,
+            parse_mode=parse_mode,
+            disable_web_page_preview=disable_web_page_preview,
         )
     except TelegramAPIError:
         return None

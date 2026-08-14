@@ -119,6 +119,10 @@ With `PRIVATE_SUPPORT_ENABLED=true`, normal users can DM the bot for iBOX help a
 
 `SUPPORT_REPLY_CLEANUP_SECONDS=86400` keeps group support replies around for one day before Sentinel deletes its own messages. Use `0` if you want those support replies to stay forever.
 
+Press Start in the bot DM as an owner admin to use the button console. Groups can be authorized, deauthorized, or removed from buttons; open support issues and requests can be marked Fixed or Dismissed. Fixed items leave the open dashboard and send a durable group update tagging the original reporter when possible. Starting a fresh `/start`, `/panel`, support, or training flow cleans up older open bot panels in that same private chat.
+
+Duplicate support reports are merged before they reach the dashboard. Sentinel uses catalog matches, normalized title variants, and the configured AI provider to decide when reports such as "Fix Lioness" and "Lioness link expired" are the same underlying issue.
+
 ## 4. Docker Compose Deployment
 
 Copy the VPS compose file into place:
