@@ -120,18 +120,39 @@ def _masked(value: str | None) -> str:
 
 def tvweb_config_text(cache_status: str | None = None) -> str:
     status = _masked(settings.tvweb_database_url)
-    text = (
-        "Website DB setup\n"
-        f"Current TVWEB_DATABASE_URL: {status}\n\n"
-        "From your website .env, copy the value named DATABASE_URL.\n"
-        "Paste it into Sentinel's VPS .env as:\n"
-        "TVWEB_DATABASE_URL=PASTE_WEBSITE_DATABASE_URL_HERE\n\n"
-        "Do not use MONGO_URI_1, MONGO_URI_2, MONGO_DB_NAME, MONGO_COL_NAME, "
-        "or REDIS_URL for this lookup. Sentinel searches the website Postgres "
-        "tv_shows table through TVWEB_DATABASE_URL.\n\n"
-        "After editing /opt/sentinel-ai-telegram-bot/.env, restart with:\n"
-        "docker compose -f compose.vps.yml up -d --build"
+    cache_settings = (
+        "Cache settings\n"
+        f"Enabled: {settings.tvweb_cache_enabled}\n"
+        f"Refresh on startup: {settings.tvweb_cache_refresh_on_startup}\n"
+        f"Refresh interval minutes: {settings.tvweb_cache_refresh_interval_minutes}\n"
+        f"Refresh UTC times: {', '.join(settings.tvweb_cache_refresh_times) or 'none'}\n"
+        f"Refresh limit: {settings.tvweb_cache_refresh_limit}"
     )
+    if settings.tvweb_database_url:
+        text = (
+            "Website DB setup\n"
+            f"Current TVWEB_DATABASE_URL: {status}\n\n"
+            "TVWEB_DATABASE_URL is configured. No need to paste it again unless you "
+            "are rotating credentials or switching website databases.\n\n"
+            "Sentinel searches the local iBOX catalog cache during group messages, "
+            "not the website DB directly. Use /refresh_tvweb_cache to replace the "
+            "local cache with a fresh pull from the website DB.\n\n"
+            f"{cache_settings}"
+        )
+    else:
+        text = (
+            "Website DB setup\n"
+            f"Current TVWEB_DATABASE_URL: {status}\n\n"
+            "From your website .env, copy the value named DATABASE_URL.\n"
+            "Paste it into Sentinel's VPS .env as:\n"
+            "TVWEB_DATABASE_URL=PASTE_WEBSITE_DATABASE_URL_HERE\n\n"
+            "Do not use MONGO_URI_1, MONGO_URI_2, MONGO_DB_NAME, MONGO_COL_NAME, "
+            "or REDIS_URL for this lookup. Sentinel searches the website Postgres "
+            "tv_shows table through TVWEB_DATABASE_URL.\n\n"
+            "After editing /opt/sentinel-ai-telegram-bot/.env, restart with:\n"
+            "docker compose -f compose.vps.yml up -d --build\n\n"
+            f"{cache_settings}"
+        )
     if cache_status:
         text = f"{text}\n\n{cache_status}"
     return text

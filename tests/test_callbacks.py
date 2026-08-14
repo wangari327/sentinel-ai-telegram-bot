@@ -1,5 +1,6 @@
 import pytest
 
+from app.bot import callbacks
 from app.bot.callbacks import (
     callback_user_is_authorized,
     make_signed_token,
@@ -7,6 +8,7 @@ from app.bot.callbacks import (
     tvweb_config_text,
     verify_signed_token,
 )
+from app.config import load_settings
 
 
 def test_signed_callback_token_roundtrip() -> None:
@@ -47,6 +49,25 @@ def test_owner_console_config_text_points_to_tvweb_database_url() -> None:
     assert "TVWEB_DATABASE_URL" in text
     assert "MONGO_URI_1" in text
     assert "<paste" not in text
+
+
+def test_owner_console_config_text_recognizes_configured_tvweb_url(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        callbacks,
+        "settings",
+        load_settings(
+            {
+                "TVWEB_DATABASE_URL": "postgresql://user:pass@host/postgres",
+                "TVWEB_CACHE_REFRESH_LIMIT": "5000",
+            }
+        ),
+    )
+
+    text = tvweb_config_text()
+
+    assert "TVWEB_DATABASE_URL is configured" in text
+    assert "PASTE_WEBSITE_DATABASE_URL_HERE" not in text
+    assert "Refresh limit: 5000" in text
 
 
 def test_owner_console_persistence_text_explains_postgres_storage() -> None:
