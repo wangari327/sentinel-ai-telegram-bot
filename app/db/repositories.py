@@ -453,6 +453,80 @@ def list_recent_moderation_events(
     return list(session.scalars(query).all())
 
 
+def list_recent_reviewable_moderation_events(
+    session: Session,
+    group_id: int | None = None,
+    *,
+    limit: int = 10,
+    candidate_limit: int = 250,
+) -> list[ModerationEvent]:
+    query = (
+        select(ModerationEvent)
+        .order_by(ModerationEvent.created_at.desc())
+        .limit(max(candidate_limit, limit))
+    )
+    if group_id is not None:
+        query = query.where(ModerationEvent.group_id == group_id)
+    candidates = session.scalars(query).all()
+    return [event for event in candidates if moderation_event_is_reviewable(event)][:limit]
+
+
+def moderation_event_is_reviewable(event: ModerationEvent) -> bool:
+    if event.review_result:
+        return True
+    action = (event.action_taken or "").casefold()
+    if action and action not in {"allow"}:
+        return True
+    label = (event.ai_label or "").casefold()
+    if label and label not in {"not_spam", "ham", "allow"}:
+        return True
+    if (event.final_score or 0.0) >= 0.55 or (event.rule_score or 0.0) >= 0.25:
+        return True
+    if event.provider_error:
+        return True
+    if _event_reasons_are_reviewable(event.reasons or []):
+        return True
+    return _event_text_is_reviewable(event.normalized_text or "")
+
+
+def _event_reasons_are_reviewable(reasons: list[str]) -> bool:
+    review_words = (
+        "adult",
+        "bait",
+        "blocked",
+        "crypto",
+        "domain",
+        "invite",
+        "link",
+        "obfuscated",
+        "phishing",
+        "porn",
+        "reward",
+        "scam",
+        "spam",
+        "suspicious",
+        "telegram",
+        "zero-width",
+    )
+    return any(word in reason.casefold() for reason in reasons for word in review_words)
+
+
+def _event_text_is_reviewable(text: str) -> bool:
+    if not text:
+        return False
+    return bool(
+        re.search(
+            r"\b(?:watch\s+now|see\s+more|tap\s+to\s+watch|link\s+expires|"
+            r"onlyfans|xxx|nsfw|porn|naked|pussy|cock|dick|fucked|swallowed|"
+            r"riding|hot\s+instagram|instagram\s+girl|hidden\s+cam|private\s+tape|"
+            r"claim\s+reward|connect\s+wallet|verify\s+your\s+account)\b|"
+            r"(?:t|telegram)\.me/[a-z0-9_]*bot(?:\?|/)?",
+            text,
+            flags=re.IGNORECASE,
+        )
+    )
+
+
 def list_groups(session: Session) -> list[Group]:
     return list(session.scalars(select(Group).order_by(Group.created_at.desc())).all())
 

@@ -71,6 +71,23 @@ def test_bare_title_with_season_is_request_with_clean_title() -> None:
     assert intent.season_number == 4
 
 
+def test_bare_title_with_media_hint_strips_hint_and_requests() -> None:
+    intent = detect_support_intent("ER Series", allow_bare_title=True)
+
+    assert intent is not None
+    assert intent.kind == "request"
+    assert intent.title_query == "ER"
+    assert intent.category_hint == "tv"
+
+
+def test_bare_title_with_year_is_treated_as_request() -> None:
+    intent = detect_support_intent("scam 2004", allow_bare_title=True)
+
+    assert intent is not None
+    assert intent.kind == "request"
+    assert intent.title_query == "scam 2004"
+
+
 def test_builds_clarification_reply_with_context_button() -> None:
     settings = load_settings({"TVWEB_SITE_BASE_URL": "https://ibox-tv.com"})
     intent = detect_support_intent(
@@ -362,6 +379,32 @@ def test_cached_tvweb_lookup_rejects_ambiguous_or_wrong_first_letter_fuzzy_match
         matches = search_tvweb_cache(session=session, settings=settings, query="Reacher")
 
     assert matches == []
+
+
+def test_cached_tvweb_lookup_matches_short_acronym_punctuation() -> None:
+    engine = create_engine("sqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+    settings = load_settings({})
+    with Session(engine) as session:
+        session.add(
+            TvwebCatalogItem(
+                tvweb_id=1,
+                title="E.R.",
+                title_key="e.r",
+                episode_title="Season 1",
+                category="tv",
+                slug="er-season-1",
+                year=1994,
+                rating=7.9,
+                download_link=None,
+            )
+        )
+        session.commit()
+
+        matches = search_tvweb_cache(session=session, settings=settings, query="ER")
+
+    assert matches
+    assert matches[0].title == "E.R."
 
 
 def test_support_responder_selects_hcnsec_chat_config() -> None:

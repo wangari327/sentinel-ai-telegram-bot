@@ -57,8 +57,10 @@ def training_label_keyboard(token: str) -> InlineKeyboardMarkup:
 
 def owner_console_keyboard(
     extra_rows: list[list[InlineKeyboardButton]] | None = None,
+    *,
+    include_home: bool = False,
 ) -> InlineKeyboardMarkup:
-    rows = [
+    base_rows = [
         [
             InlineKeyboardButton(text="Stats", callback_data="console:stats"),
             InlineKeyboardButton(text="Groups", callback_data="console:groups"),
@@ -80,12 +82,13 @@ def owner_console_keyboard(
             InlineKeyboardButton(text="Backups", callback_data="console:persistence"),
         ],
     ]
+    rows: list[list[InlineKeyboardButton]] = []
     if extra_rows:
-        rows = [
-            *extra_rows,
-            [InlineKeyboardButton(text="Console", callback_data="console:stats")],
-            *rows,
-        ]
+        rows.extend(extra_rows)
+        include_home = True
+    if include_home:
+        rows.append([InlineKeyboardButton(text="Back home", callback_data="console:home")])
+    rows.extend(base_rows)
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -114,7 +117,7 @@ def group_management_keyboard(groups: list[Group]) -> InlineKeyboardMarkup:
                     ),
                 ]
             )
-    return owner_console_keyboard(rows)
+    return owner_console_keyboard(rows, include_home=True)
 
 
 def support_issues_keyboard(issues: list[SupportIssue]) -> InlineKeyboardMarkup:
@@ -129,7 +132,7 @@ def support_issues_keyboard(issues: list[SupportIssue]) -> InlineKeyboardMarkup:
         ]
         for issue in issues[:8]
     ]
-    return owner_console_keyboard(rows)
+    return owner_console_keyboard(rows, include_home=True)
 
 
 def support_requests_keyboard(requests: list[SupportRequest]) -> InlineKeyboardMarkup:
@@ -144,7 +147,7 @@ def support_requests_keyboard(requests: list[SupportRequest]) -> InlineKeyboardM
         ]
         for request in requests[:8]
     ]
-    return owner_console_keyboard(rows)
+    return owner_console_keyboard(rows, include_home=True)
 
 
 def support_reply_keyboard(buttons: tuple[SupportButton, ...]) -> InlineKeyboardMarkup | None:
@@ -181,7 +184,7 @@ def moderation_history_keyboard(events: list[ModerationEvent]) -> InlineKeyboard
         ]
         for event in events[:6]
     ]
-    return owner_console_keyboard(rows)
+    return owner_console_keyboard(rows, include_home=True)
 
 
 def public_support_keyboard(settings: object) -> InlineKeyboardMarkup:

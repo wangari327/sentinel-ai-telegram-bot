@@ -199,6 +199,102 @@ async def test_pipeline_replies_to_clear_title_request_from_cache() -> None:
     assert "Avatar" in str(bot.sent[0]["text"])
 
 
+async def test_pipeline_replies_to_media_hint_short_title_from_cache() -> None:
+    settings = load_settings(
+        {
+            "AUTHORIZED_CHAT_IDS": "-1001",
+            "DEFAULT_GROUP_MODE": "normal",
+            "AI_PROVIDER": "rules_only",
+            "AI_FALLBACK_PROVIDER": "rules_only",
+            "SUPPORT_ENABLED": "true",
+            "SUPPORT_AI_REPLIES": "false",
+            "SUPPORT_REPLY_CLEANUP_SECONDS": "0",
+        }
+    )
+    bot = FakeBot()
+    message = FakeMessage(text="ER Series")
+
+    with _session() as session:
+        group = repositories.get_or_create_group(
+            session,
+            telegram_chat_id=-1001,
+            title="Series 2022 Requests",
+            chat_type="supergroup",
+            settings=settings,
+        )
+        group.setup_completed = True
+        session.add(
+            TvwebCatalogItem(
+                tvweb_id=78,
+                title="E.R.",
+                title_key="e.r",
+                episode_title="Season 1",
+                category="tv",
+                slug="er-season-1",
+                year=1994,
+                rating=7.9,
+                download_link=None,
+            )
+        )
+
+        result = await process_group_message(
+            message=message,
+            bot=bot,
+            session=session,
+            settings=settings,
+            permissions=FakePermissions(),
+            sender_is_admin=False,
+        )
+
+    assert result.support_replied
+    assert bot.sent
+    assert "Found on iBOX TV" in str(bot.sent[0]["text"])
+    assert "E.R." in str(bot.sent[0]["text"])
+
+
+async def test_pipeline_replies_to_year_title_request_even_when_not_cached() -> None:
+    settings = load_settings(
+        {
+            "AUTHORIZED_CHAT_IDS": "-1001",
+            "DEFAULT_GROUP_MODE": "normal",
+            "AI_PROVIDER": "rules_only",
+            "AI_FALLBACK_PROVIDER": "rules_only",
+            "SUPPORT_ENABLED": "true",
+            "SUPPORT_AI_REPLIES": "false",
+            "SUPPORT_REPLY_CLEANUP_SECONDS": "0",
+            "TVWEB_DATABASE_URL": "postgresql://readonly:pass@example.com:5432/ibox",
+        }
+    )
+    bot = FakeBot()
+    message = FakeMessage(text="scam 2004")
+
+    with _session() as session:
+        group = repositories.get_or_create_group(
+            session,
+            telegram_chat_id=-1001,
+            title="Series 2022 Requests",
+            chat_type="supergroup",
+            settings=settings,
+        )
+        group.setup_completed = True
+
+        result = await process_group_message(
+            message=message,
+            bot=bot,
+            session=session,
+            settings=settings,
+            permissions=FakePermissions(),
+            sender_is_admin=False,
+        )
+        request = session.scalar(select(SupportRequest))
+
+    assert result.support_replied
+    assert request is not None
+    assert request.title_query == "scam 2004"
+    assert bot.sent
+    assert "request" in str(bot.sent[0]["text"]).casefold()
+
+
 async def test_pipeline_clarifies_season_only_reply_instead_of_random_search() -> None:
     settings = load_settings(
         {

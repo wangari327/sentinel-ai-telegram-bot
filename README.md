@@ -71,6 +71,7 @@ Private owner controls:
 
 - Press Start in the bot DM, or send `/start`, to open the button console for stats, groups, support issues, requests, history, tutorial status, website DB status, cache refresh, and backups.
 - The owner console is button-first: the Groups view can authorize, deauthorize, or remove seen chats; Issues and Requests views can mark items fixed or dismiss them.
+- Console sub-pages include a Back home button, and Spam history only shows suspicious/detected/reviewable moderation items instead of harmless allowed title chatter.
 - New `/start`, `/panel`, support, and training flows clean up older open bot panels in that same private chat before posting the fresh buttons.
 - `/panel` - fallback command to reopen the same button console if the message gets buried.
 - `/authorize <chat_id>` - authorize a chat from private DM.

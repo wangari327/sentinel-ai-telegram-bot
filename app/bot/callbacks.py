@@ -280,9 +280,9 @@ def _requests_console_text(requests: list[object]) -> str:
 
 def _moderation_history_text(events: list[object], *, prefix: str | None = None) -> str:
     if not events:
-        body = "No moderation history yet."
+        body = "No suspicious moderation history yet."
     else:
-        body = "Recent moderation events\n" + "\n".join(
+        body = "Suspicious moderation history\n" + "\n".join(
             (
                 f"#{event.id} {event.action_taken} {event.final_score:.2f}"
                 f"{' reviewed=' + event.review_result if event.review_result else ''}: "
@@ -433,7 +433,7 @@ async def handle_moderation_event_callback(callback: CallbackQuery) -> None:
         event = session.get(ModerationEvent, event_id)
         if event is None:
             text = "That moderation event is gone."
-            events = repositories.list_recent_moderation_events(session, limit=10)
+            events = repositories.list_recent_reviewable_moderation_events(session, limit=10)
             reply_markup = moderation_history_keyboard(events)
         else:
             normalized = normalize_message_parts(text=event.normalized_text)
@@ -477,7 +477,7 @@ async def handle_moderation_event_callback(callback: CallbackQuery) -> None:
                 if action == "spam_delete"
                 else f"Saved #{event_id} as good training."
             )
-            events = repositories.list_recent_moderation_events(session, limit=10)
+            events = repositories.list_recent_reviewable_moderation_events(session, limit=10)
             text = _moderation_history_text(events, prefix=prefix)
             reply_markup = moderation_history_keyboard(events)
 
@@ -701,15 +701,18 @@ async def handle_console_callback(callback: CallbackQuery) -> None:
             try:
                 await callback.message.edit_text(
                     text,
-                    reply_markup=owner_console_keyboard(),
+                    reply_markup=owner_console_keyboard(include_home=True),
                     parse_mode=None,
                 )
             except TelegramAPIError:
                 pass
         return
-    reply_markup = owner_console_keyboard()
+    reply_markup = owner_console_keyboard(include_home=action != "home")
     with session_scope() as session:
-        if action == "stats":
+        if action == "home":
+            text = "SentinelAI owner console. Pick a panel."
+            reply_markup = owner_console_keyboard()
+        elif action == "stats":
             groups = repositories.list_groups(session)
             open_issues = repositories.count_open_support_issues(session)
             open_requests = repositories.count_open_support_requests(session)
@@ -736,9 +739,9 @@ async def handle_console_callback(callback: CallbackQuery) -> None:
             text = _requests_console_text(requests)
             reply_markup = support_requests_keyboard(requests)
         elif action == "history":
-            events = repositories.list_recent_moderation_events(session, limit=10)
+            events = repositories.list_recent_reviewable_moderation_events(session, limit=10)
             if not events:
-                text = "No moderation history yet."
+                text = "No suspicious moderation history yet."
             else:
                 text = _moderation_history_text(events)
                 reply_markup = moderation_history_keyboard(events)

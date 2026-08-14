@@ -22,6 +22,15 @@ def test_owner_console_has_no_slash_command_required_actions() -> None:
     assert "console:persistence" in callback_data
 
 
+def test_owner_console_subscreens_have_back_home_navigation() -> None:
+    keyboard = owner_console_keyboard(include_home=True)
+
+    buttons = [button for row in keyboard.inline_keyboard for button in row]
+
+    assert any(button.text == "Back home" for button in buttons)
+    assert any(button.callback_data == "console:home" for button in buttons)
+
+
 def test_public_support_keyboard_has_site_links_and_tutorial_button() -> None:
     keyboard = public_support_keyboard(load_settings({}))
 
@@ -96,6 +105,18 @@ def test_management_keyboards_expose_actions() -> None:
     assert "issue:dismiss:4" in callback_data
     assert "request:resolve:5" in callback_data
     assert "request:dismiss:5" in callback_data
+    assert "console:home" in callback_data
+
+
+def test_empty_management_keyboards_keep_home_navigation() -> None:
+    for keyboard in (
+        group_management_keyboard([]),
+        support_issues_keyboard([]),
+        support_requests_keyboard([]),
+        moderation_history_keyboard([]),
+    ):
+        callback_data = {button.callback_data for row in keyboard.inline_keyboard for button in row}
+        assert "console:home" in callback_data
 
 
 def test_moderation_history_keyboard_exposes_training_review_actions() -> None:
@@ -130,3 +151,4 @@ def test_moderation_history_keyboard_exposes_training_review_actions() -> None:
 
     assert "event:spam_delete:25" in callback_data
     assert "event:not_spam:25" in callback_data
+    assert "console:home" in callback_data

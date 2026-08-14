@@ -262,14 +262,17 @@ def detect_support_intent(
         if title_query:
             if season_number is not None or episode_number is not None:
                 title_query = _extract_title_query(text) or title_query
+            category_hint = _category_hint(lower) or ("tv" if season_number else None)
             return SupportIntent(
-                kind=(
-                    "request"
-                    if season_number is not None or episode_number is not None
-                    else "bare_title"
+                kind=_bare_title_kind(
+                    text=text,
+                    title_query=title_query,
+                    category_hint=category_hint,
+                    season_number=season_number,
+                    episode_number=episode_number,
                 ),
                 title_query=title_query,
-                category_hint=_category_hint(lower) or ("tv" if season_number else None),
+                category_hint=category_hint,
                 season_number=season_number,
                 episode_number=episode_number,
             )
@@ -466,16 +469,50 @@ def _extract_bare_title_query(text: str) -> str | None:
         return None
     if extract_incomplete_episode_reference(value):
         return None
+    category_hint = _category_hint(lower)
+    if category_hint:
+        stripped = _extract_title_query(value)
+        if stripped and _valid_bare_title_candidate(stripped, allow_short=True):
+            return stripped
     if not 3 <= len(value) <= 80:
         return None
-    words = value.split()
-    if not words or len(words) > 6:
-        return None
-    if len(words) == 1 and lower in BARE_TITLE_BLOCKLIST:
-        return None
-    if not any(char.isalnum() for char in value):
+    if not _valid_bare_title_candidate(value):
         return None
     return value
+
+
+def _valid_bare_title_candidate(value: str, *, allow_short: bool = False) -> bool:
+    lower = value.casefold()
+    min_length = 2 if allow_short else 3
+    if not min_length <= len(value) <= 80:
+        return False
+    words = value.split()
+    if not words or len(words) > 6:
+        return False
+    if lower in BARE_TITLE_BLOCKLIST or lower in TITLE_QUERY_BLOCKLIST:
+        return False
+    if len(words) == 1 and lower in BARE_TITLE_BLOCKLIST:
+        return False
+    return any(char.isalnum() for char in value)
+
+
+def _bare_title_kind(
+    *,
+    text: str,
+    title_query: str,
+    category_hint: str | None,
+    season_number: int | None,
+    episode_number: int | None,
+) -> str:
+    if season_number is not None or episode_number is not None:
+        return "request"
+    if category_hint:
+        return "request"
+    if re.search(r"\b(?:19|20)\d{2}\b", title_query):
+        return "request"
+    if re.search(r"\b(?:movie|film|series|anime|tv\s+show|show)\b", text, re.IGNORECASE):
+        return "request"
+    return "bare_title"
 
 
 def _extract_release_question(text: str) -> str | None:

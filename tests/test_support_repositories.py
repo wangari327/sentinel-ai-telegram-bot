@@ -148,3 +148,82 @@ def test_group_authorization_by_id_and_remove() -> None:
 
         repositories.forget_group_data(session, group.id)
         assert repositories.get_group_by_id(session, group.id) is None
+
+
+def test_reviewable_moderation_history_filters_harmless_allows() -> None:
+    settings = load_settings({})
+    with _session() as session:
+        group = repositories.get_or_create_group(
+            session,
+            telegram_chat_id=-1001,
+            title="Group",
+            chat_type="supergroup",
+            settings=settings,
+        )
+        repositories.save_moderation_event(
+            session,
+            group_id=group.id,
+            telegram_chat_id=-1001,
+            telegram_message_id=10,
+            sender_user_id=111,
+            normalized_text="The Mentalist",
+            text_hash="plain",
+            domains=[],
+            ai_label="not_spam",
+            ai_confidence=0.4,
+            rule_score=0.0,
+            final_score=0.4,
+            action_taken="allow",
+            action_status="ok",
+            reasons=[],
+            provider_name="mock",
+            model_name="mock",
+            prompt_version="test",
+        )
+        repositories.save_moderation_event(
+            session,
+            group_id=group.id,
+            telegram_chat_id=-1001,
+            telegram_message_id=11,
+            sender_user_id=222,
+            normalized_text="Hot Instagram girl got exposed riding cock like crazy",
+            text_hash="adult",
+            domains=[],
+            ai_label="not_spam",
+            ai_confidence=0.4,
+            rule_score=0.0,
+            final_score=0.4,
+            action_taken="allow",
+            action_status="ok",
+            reasons=[],
+            provider_name="mock",
+            model_name="mock",
+            prompt_version="test",
+        )
+        repositories.save_moderation_event(
+            session,
+            group_id=group.id,
+            telegram_chat_id=-1001,
+            telegram_message_id=12,
+            sender_user_id=333,
+            normalized_text="claim reward verify your account",
+            text_hash="spam",
+            domains=[],
+            ai_label="spam",
+            ai_confidence=0.95,
+            rule_score=0.5,
+            final_score=0.92,
+            action_taken="delete",
+            action_status="ok",
+            reasons=["login phishing wording"],
+            provider_name="mock",
+            model_name="mock",
+            prompt_version="test",
+        )
+
+        events = repositories.list_recent_reviewable_moderation_events(session, limit=10)
+
+    texts = {event.normalized_text for event in events}
+    assert "The Mentalist" not in texts
+    assert "Hot Instagram girl got exposed riding cock like crazy" in texts
+    assert "claim reward verify your account" in texts

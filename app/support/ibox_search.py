@@ -88,16 +88,14 @@ def search_tvweb(
     if category:
         category_clause = "AND category = :category"
         params["category"] = "movie" if category == "movies" else category
-    sql = text(
-        f"""
+    sql = text(f"""
         SELECT id, show_name, episode_title, category, slug, year, rating, download_link, updated_at
         FROM tv_shows
         WHERE show_name ILIKE :query
         {category_clause}
         ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST
         LIMIT :limit
-        """
-    )
+        """)
     with _engine(settings.tvweb_database_url).connect() as conn:
         rows = conn.execute(sql, params).mappings().all()
     return [
@@ -119,14 +117,12 @@ def search_tvweb(
 def fetch_tvweb_catalog(*, settings: Settings, limit: int) -> list[IboxItem]:
     if not settings.tvweb_database_url:
         return []
-    sql = text(
-        """
+    sql = text("""
         SELECT id, show_name, episode_title, category, slug, year, rating, download_link, updated_at
         FROM tv_shows
         ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST
         LIMIT :limit
-        """
-    )
+        """)
     with _engine(settings.tvweb_database_url).connect() as conn:
         rows = conn.execute(sql, {"limit": limit}).mappings().all()
     return [
@@ -173,12 +169,10 @@ def search_tvweb_cache(
         .limit(candidate_limit)
     )
     if category:
-        stmt = stmt.where(TvwebCatalogItem.category == ("movie" if category == "movies" else category))
-    rows = [
-        row
-        for row in session.scalars(stmt).all()
-        if _catalog_text_matches(query_key, row)
-    ]
+        stmt = stmt.where(
+            TvwebCatalogItem.category == ("movie" if category == "movies" else category)
+        )
+    rows = [row for row in session.scalars(stmt).all() if _catalog_text_matches(query_key, row)]
     if not rows:
         rows = _fuzzy_tvweb_cache_rows(
             session=session,
@@ -209,11 +203,13 @@ def _fuzzy_tvweb_cache_rows(
     category: str | None,
     limit: int,
 ) -> list[TvwebCatalogItem]:
-    if len(query_key) < 5:
-        return []
     stmt = select(TvwebCatalogItem)
     if category:
-        stmt = stmt.where(TvwebCatalogItem.category == ("movie" if category == "movies" else category))
+        stmt = stmt.where(
+            TvwebCatalogItem.category == ("movie" if category == "movies" else category)
+        )
+    if len(query_key) < 5:
+        return _compact_exact_rows(session=session, stmt=stmt, query_key=query_key, limit=limit)
     candidates = session.scalars(stmt.limit(6000)).all()
     scored = [
         (score, row)
@@ -233,6 +229,28 @@ def _catalog_text_matches(query_key: str, row: TvwebCatalogItem) -> bool:
         normalize_title_query(row.episode_title or "").casefold(),
     ]
     return any(pattern.search(value) for value in values)
+
+
+def _compact_exact_rows(
+    *,
+    session: Session,
+    stmt: object,
+    query_key: str,
+    limit: int,
+) -> list[TvwebCatalogItem]:
+    compact_query = _compact_title_key(query_key)
+    if not 2 <= len(compact_query) <= 4:
+        return []
+    rows = [
+        row
+        for row in session.scalars(stmt.limit(6000)).all()
+        if _compact_title_key(row.title_key or row.title) == compact_query
+    ]
+    return rows[:limit]
+
+
+def _compact_title_key(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "", normalize_title_query(value).casefold())
 
 
 def _catalog_similarity(query_key: str, title_key: str | None) -> float:
