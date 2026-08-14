@@ -14,10 +14,19 @@ from app.db.models import Domain, GroupSettings
 from app.db.session import session_scope
 
 router = Router(name="commands")
+MODES = {"normal", "auto_delete", "silent", "monitor_only", "aggressive"}
 
 
 def _target_group_id(message: Message) -> int:
     return int(message.chat.id)
+
+
+def _mode_updates(mode_value: str) -> dict[str, object]:
+    return {
+        "mode": mode_value,
+        "auto_delete_enabled": mode_value in {"auto_delete", "silent", "aggressive"},
+        "silent_enabled": mode_value == "silent",
+    }
 
 
 async def _require_admin(message: Message) -> bool:
@@ -136,6 +145,11 @@ async def mode(message: Message) -> None:
         return
     if not await _require_admin(message):
         return
+    parts = (message.text or "").split(maxsplit=1)
+    requested_mode = parts[1].strip().lower() if len(parts) > 1 else None
+    if requested_mode and requested_mode not in MODES:
+        await message.reply(f"Invalid mode. Use one of: {', '.join(sorted(MODES))}.")
+        return
     with session_scope() as session:
         group = repositories.get_or_create_group(
             session,
@@ -148,7 +162,13 @@ async def mode(message: Message) -> None:
             await message.reply("This chat is not authorized. Run /setup first with an authorized admin.")
             return
         group_settings = repositories.get_or_create_group_settings(session, group, settings)
+        if requested_mode:
+            for name, value in _mode_updates(requested_mode).items():
+                setattr(group_settings, name, value)
         current_mode = group_settings.mode
+    if requested_mode:
+        await message.reply(f"Mode changed to {current_mode}.")
+        return
     await message.reply(f"Current mode: {current_mode}", reply_markup=mode_keyboard())
 
 
@@ -441,7 +461,7 @@ async def forget_group_data(message: Message) -> None:
 @router.callback_query(F.data.startswith("mode:"))
 async def mode_callback(callback) -> None:
     mode_value = (callback.data or "").split(":", 1)[1]
-    if mode_value not in {"normal", "auto_delete", "silent", "monitor_only", "aggressive"}:
+    if mode_value not in MODES:
         await callback.answer("Invalid mode.")
         return
     message = callback.message
@@ -465,8 +485,7 @@ async def mode_callback(callback) -> None:
         group_settings = session.scalar(
             select(GroupSettings).where(GroupSettings.group_id == group.id)
         )
-        group_settings.mode = mode_value
-        group_settings.auto_delete_enabled = mode_value in {"auto_delete", "silent", "aggressive"}
-        group_settings.silent_enabled = mode_value == "silent"
+        for name, value in _mode_updates(mode_value).items():
+            setattr(group_settings, name, value)
     await callback.message.edit_text(f"Mode changed to {mode_value}.")
     await callback.answer("Mode updated.")

@@ -367,7 +367,7 @@ After deployment, add the bot to the authorized Telegram groups, promote it to a
 
 ```text
 /status
-/mode
+/mode normal
 ```
 
 The full VPS guide is in `deploy/VPS_DEPLOY.md`.
