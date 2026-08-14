@@ -16,3 +16,6 @@ def test_install_script_uses_expected_domain_and_keeps_existing_env() -> None:
     assert "FORCE_ENV=true" in script
     assert "APP_HOST_PORT=\"${APP_HOST_PORT:-127.0.0.1:8010}\"" in script
     assert "docker compose -f compose.vps.yml up -d --build" in script
+    assert "prompt_optional TVWEB_DATABASE_URL" in script
+    assert "TUTORIAL_DUMP_CHAT_ID=${TUTORIAL_DUMP_CHAT_ID}" in script
+    assert "SUPPORT_AI_REPLIES=true" in script

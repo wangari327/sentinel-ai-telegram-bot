@@ -73,6 +73,8 @@ Private owner commands:
 - `/authorize <chat_id>` - authorize a chat from private DM.
 - `/deauthorize <chat_id>` - remove DB authorization for a chat.
 - `/tutorial_save` - save a forwarded video/document as the default support tutorial.
+- `/tvweb_config` - show exactly which website env value to paste for iBOX lookup.
+- `/persistence` or `/backups` - show how bot data survives updates and reinstalls.
 
 ## Modes
 
@@ -92,16 +94,23 @@ When `SUPPORT_ENABLED=true`, SentinelAI also watches non-spam group messages for
 
 If `TVWEB_DATABASE_URL` is configured, the bot searches the website `tv_shows` table and can steer users to iBOX TV results. If no match is found, it records the request so you can review demand later from `/panel`. Use a read-only database user for this connection where possible.
 
+From the website `.env`, use the value named `DATABASE_URL` and add it to Sentinel as `TVWEB_DATABASE_URL`. Do not use `MONGO_URI_1`, `MONGO_URI_2`, `MONGO_DB_NAME`, `MONGO_COL_NAME`, or `REDIS_URL` for this feature. The private owner command `/tvweb_config` prints this reminder from the bot.
+
 ```env
 SUPPORT_ENABLED=true
+SUPPORT_AI_REPLIES=true
+SUPPORT_TONE=playful, lightly sarcastic, chatty, funny, helpful, and never rude
 SUPPORT_REPLY_CLEANUP_SECONDS=180
 TVWEB_DATABASE_URL=postgresql+psycopg://readonly:password@host:5432/tv_shows_db
 TVWEB_SITE_BASE_URL=https://ibox-tv.com
 TVWEB_ANIME_BASE_URL=https://anime.ibox-tv.com
 TVWEB_MOVIES_BASE_URL=https://movies.ibox-tv.com
+TUTORIAL_DUMP_CHAT_ID=-1003743973576
 ```
 
-To save a tutorial, forward the video/document to the bot privately with `/tutorial_save` in the caption. When users ask how to download or play files, the bot sends the saved tutorial if available.
+To save a tutorial, forward the video/document to the bot privately with `/tutorial_save` in the caption. When `TUTORIAL_DUMP_CHAT_ID` is set, Sentinel also copies that tutorial into the dump channel so the media stays easy to audit. When users ask how to download or play files, the bot sends the saved tutorial if available.
+
+Support answers are factual first, then AI-polished when `SUPPORT_AI_REPLIES=true` and your configured `AI_PROVIDER` supports chat completions. If the provider fails, the bot falls back to the plain factual reply.
 
 ## AI Providers
 
@@ -311,6 +320,7 @@ Non-interactive install:
 cd /opt/sentinel-ai-telegram-bot
 export BOT_TOKEN='paste-token-here'
 export HCNSEC_API_KEY='paste-key-here'
+export TVWEB_DATABASE_URL='paste-website-DATABASE_URL-here'
 export LETSENCRYPT_EMAIL='admin@ibox-tv.com'
 bash deploy/scripts/install_vps.sh
 ```
@@ -347,9 +357,15 @@ AUTHORIZED_CHAT_IDS=-1001303757981,-1002370580254
 OWNER_ADMIN_IDS=762308466
 DEFAULT_NOTIFY_ADMIN_ID=762308466
 HCNSEC_API_KEY=
+TVWEB_DATABASE_URL=
+TUTORIAL_DUMP_CHAT_ID=-1003743973576
 ```
 
 Do not commit the real `.env`. If an API key or bot token was pasted into chat, logs, or Git history, rotate it with the provider and update only the VPS `.env`.
+
+For the website integration, paste the website `.env` value named `DATABASE_URL` into `TVWEB_DATABASE_URL`. Sentinel normalizes `postgresql://...` to `postgresql+psycopg://...`, so either prefix is fine.
+
+The default Docker Postgres volume survives container rebuilds and repo updates. It does not survive a full VPS reinstall unless you restore a backup. For reinstall-proof bot data, use an external Postgres `DATABASE_URL` or schedule off-VPS `pg_dump` backups; MongoDB is not used by the current Sentinel schema.
 
 ### VPS Operations
 

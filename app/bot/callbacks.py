@@ -109,6 +109,44 @@ def _short(value: str | None, limit: int = 80) -> str:
     return value if len(value) <= limit else f"{value[: limit - 1]}..."
 
 
+def _masked(value: str | None) -> str:
+    if not value:
+        return "not configured"
+    if len(value) <= 18:
+        return "***configured***"
+    return f"{value[:10]}...{value[-6:]}"
+
+
+def tvweb_config_text() -> str:
+    status = _masked(settings.tvweb_database_url)
+    return (
+        "Website DB setup\n"
+        f"Current TVWEB_DATABASE_URL: {status}\n\n"
+        "From your website .env, copy the value named DATABASE_URL.\n"
+        "Paste it into Sentinel's VPS .env as:\n"
+        "TVWEB_DATABASE_URL=<paste website DATABASE_URL here>\n\n"
+        "Do not use MONGO_URI_1, MONGO_URI_2, MONGO_DB_NAME, MONGO_COL_NAME, "
+        "or REDIS_URL for this lookup. Sentinel searches the website Postgres "
+        "tv_shows table through TVWEB_DATABASE_URL.\n\n"
+        "After editing /opt/sentinel-ai-telegram-bot/.env, restart with:\n"
+        "docker compose -f compose.vps.yml up -d --build"
+    )
+
+
+def persistence_text() -> str:
+    status = _masked(settings.database_url)
+    return (
+        "Data survival\n"
+        f"Current bot DATABASE_URL: {status}\n\n"
+        "The Docker Postgres volume survives container rebuilds, restarts, and normal "
+        "repo updates. It does not survive a full VPS wipe unless you restore a backup.\n\n"
+        "For reinstall-proof storage, point Sentinel's DATABASE_URL to an external "
+        "Postgres database or run scheduled pg_dump backups off the VPS. MongoDB is not "
+        "used by Sentinel's current schema; using it would be a storage rewrite, not a "
+        "drop-in env change."
+    )
+
+
 @router.callback_query(F.data.startswith("review:"))
 async def handle_review_callback(callback: CallbackQuery) -> None:
     parts = (callback.data or "").split(":", 2)
@@ -251,6 +289,10 @@ async def handle_console_callback(callback: CallbackQuery) -> None:
                 text = f"Tutorial saved as {asset.file_type}. Forward a new video with /tutorial_save to replace it."
             else:
                 text = "No tutorial saved yet. Forward the tutorial video here with /tutorial_save in the caption."
+        elif action == "tvweb":
+            text = tvweb_config_text()
+        elif action == "persistence":
+            text = persistence_text()
         else:
             text = "Unknown console action."
     if callback.message:

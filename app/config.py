@@ -103,6 +103,8 @@ class Settings:
     ai_scan_all_messages: bool
     ai_scan_links_only: bool
     support_enabled: bool
+    support_ai_replies: bool
+    support_tone: str
     support_reply_cleanup_seconds: int
     tvweb_database_url: str
     tvweb_site_base_url: str
@@ -225,6 +227,11 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         ai_scan_all_messages=_bool(source.get("AI_SCAN_ALL_MESSAGES"), False),
         ai_scan_links_only=_bool(source.get("AI_SCAN_LINKS_ONLY"), True),
         support_enabled=_bool(source.get("SUPPORT_ENABLED"), True),
+        support_ai_replies=_bool(source.get("SUPPORT_AI_REPLIES"), True),
+        support_tone=source.get(
+            "SUPPORT_TONE",
+            "playful, lightly sarcastic, chatty, funny, helpful, and never rude",
+        ),
         support_reply_cleanup_seconds=_int(source.get("SUPPORT_REPLY_CLEANUP_SECONDS"), 180),
         tvweb_database_url=normalize_database_url(source.get("TVWEB_DATABASE_URL", "")),
         tvweb_site_base_url=source.get("TVWEB_SITE_BASE_URL", "https://ibox-tv.com"),

@@ -67,5 +67,9 @@ def owner_console_keyboard() -> InlineKeyboardMarkup:
                 InlineKeyboardButton(text="Spam history", callback_data="console:history"),
                 InlineKeyboardButton(text="Tutorial", callback_data="console:tutorial"),
             ],
+            [
+                InlineKeyboardButton(text="Website DB", callback_data="console:tvweb"),
+                InlineKeyboardButton(text="Backups", callback_data="console:persistence"),
+            ],
         ]
     )

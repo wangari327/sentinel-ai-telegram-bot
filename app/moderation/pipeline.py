@@ -27,6 +27,7 @@ from app.moderation.scoring import Decision, combine_scores, decide_action
 from app.moderation.similarity import retrieve_examples
 from app.support.assistant import build_support_reply, detect_support_intent
 from app.support.ibox_search import search_tvweb
+from app.support.responder import render_support_reply
 
 
 @dataclass(frozen=True, slots=True)
@@ -94,6 +95,13 @@ async def maybe_handle_support_message(
     reply = build_support_reply(intent=intent, matches=matches, settings=settings)
     if reply is None:
         return False
+    reply_text = await render_support_reply(
+        factual_reply=reply,
+        intent=intent,
+        matches=matches,
+        settings=settings,
+        user_text=normalized.text,
+    )
 
     if intent.kind == "request" and intent.title_query:
         repositories.upsert_support_request(
@@ -128,7 +136,7 @@ async def maybe_handle_support_message(
         bot=bot,
         session=session,
         chat_id=group.telegram_chat_id,
-        text=reply.text,
+        text=reply_text,
         settings=settings,
         reply_to_message_id=int(getattr(message, "message_id", 0)),
     )

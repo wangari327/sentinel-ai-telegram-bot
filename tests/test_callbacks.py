@@ -3,6 +3,8 @@ import pytest
 from app.bot.callbacks import (
     callback_user_is_authorized,
     make_signed_token,
+    persistence_text,
+    tvweb_config_text,
     verify_signed_token,
 )
 
@@ -36,3 +38,19 @@ def test_admin_only_callback_authorization() -> None:
         is_group_admin=False,
         owner_admin_ids=set(),
     )
+
+
+def test_owner_console_config_text_points_to_tvweb_database_url() -> None:
+    text = tvweb_config_text()
+
+    assert "DATABASE_URL" in text
+    assert "TVWEB_DATABASE_URL" in text
+    assert "MONGO_URI_1" in text
+
+
+def test_owner_console_persistence_text_explains_postgres_storage() -> None:
+    text = persistence_text()
+
+    assert "DATABASE_URL" in text
+    assert "Postgres" in text
+    assert "MongoDB is not used" in text

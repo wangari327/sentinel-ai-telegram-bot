@@ -1,6 +1,7 @@
 from app.config import load_settings
-from app.support.assistant import build_support_reply, detect_support_intent
+from app.support.assistant import SupportReply, build_support_reply, detect_support_intent
 from app.support.ibox_search import IboxItem, item_url, search_url
+from app.support.responder import render_support_reply, select_support_chat_config
 
 
 def test_detects_movie_request() -> None:
@@ -66,3 +67,36 @@ def test_search_url_uses_category_domains() -> None:
 
     assert search_url(settings, "naruto", "anime").startswith("https://anime.ibox-tv.com")
     assert search_url(settings, "dune", "movie").startswith("https://movies.ibox-tv.com")
+
+
+def test_support_responder_selects_hcnsec_chat_config() -> None:
+    settings = load_settings(
+        {
+            "AI_PROVIDER": "hcnsec",
+            "HCNSEC_API_KEY": "provider-key",
+            "HCNSEC_BASE_URL": "https://api.hcnsec.cn",
+            "HCNSEC_MODEL": "deepseek-v4-flash",
+        }
+    )
+
+    config = select_support_chat_config(settings)
+
+    assert config is not None
+    assert config.provider_name == "hcnsec"
+    assert config.base_url == "https://api.hcnsec.cn"
+
+
+async def test_support_responder_uses_factual_reply_when_disabled() -> None:
+    settings = load_settings({"SUPPORT_AI_REPLIES": "false"})
+    factual = SupportReply(text="Search iBOX TV here:\nhttps://ibox-tv.com/?search=Dune")
+    intent = detect_support_intent("where can I find Dune")
+
+    text = await render_support_reply(
+        factual_reply=factual,
+        intent=intent,
+        matches=[],
+        settings=settings,
+        user_text="where can I find Dune",
+    )
+
+    assert text == factual.text

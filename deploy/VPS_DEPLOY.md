@@ -21,6 +21,7 @@ Non-interactive example:
 cd /opt/sentinel-ai-telegram-bot
 export BOT_TOKEN='paste-token-here'
 export HCNSEC_API_KEY='paste-key-here'
+export TVWEB_DATABASE_URL='paste-website-DATABASE_URL-here'
 export LETSENCRYPT_EMAIL='admin@ibox-tv.com'
 bash deploy/scripts/install_vps.sh
 ```
@@ -83,6 +84,8 @@ AUTHORIZED_CHAT_IDS=-1001303757981,-1002370580254
 OWNER_ADMIN_IDS=762308466
 DEFAULT_NOTIFY_ADMIN_ID=762308466
 HCNSEC_API_KEY=your-provider-key
+TVWEB_DATABASE_URL=paste-the-website-DATABASE_URL-value-here
+TUTORIAL_DUMP_CHAT_ID=-1003743973576
 ```
 
 Generate a secret:
@@ -92,6 +95,10 @@ openssl rand -hex 32
 ```
 
 Find your Telegram user ID with a bot such as `@userinfobot`. Find a group ID by adding the bot to the group and checking logs or using a trusted ID helper bot.
+
+For iBOX lookup, copy the website `.env` value named `DATABASE_URL` into Sentinel as `TVWEB_DATABASE_URL`. Do not use the website Mongo or Redis variables for this feature. The bot can remind you through the owner-only private command `/tvweb_config`.
+
+`TUTORIAL_DUMP_CHAT_ID=-1003743973576` is the default dump channel. Make the bot an admin in that channel, then forward the tutorial video/document to the bot privately with `/tutorial_save` in the caption.
 
 ## 4. Docker Compose Deployment
 
@@ -107,6 +114,8 @@ Set a real database password in `.env`:
 POSTGRES_PASSWORD=replace-this-password
 DATABASE_URL=postgresql+psycopg://sentinel:replace-this-password@postgres:5432/sentinel
 ```
+
+This local Docker Postgres volume survives normal app updates and container rebuilds. It does not survive a full VPS reinstall unless you restore a backup. For reinstall-proof bot history, point `DATABASE_URL` at an external Postgres service or run scheduled `pg_dump` backups off the VPS. MongoDB is not a drop-in replacement for Sentinel's current SQL schema.
 
 Start the stack:
 

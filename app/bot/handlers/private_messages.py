@@ -4,7 +4,7 @@ from aiogram import F, Router
 from aiogram.exceptions import TelegramAPIError
 from aiogram.types import Message
 
-from app.bot.callbacks import make_signed_token
+from app.bot.callbacks import make_signed_token, persistence_text, tvweb_config_text
 from app.bot.keyboards import owner_console_keyboard, training_label_keyboard
 from app.config import settings
 from app.db import repositories
@@ -24,6 +24,18 @@ async def on_private_message(message: Message) -> None:
             await message.answer("Owner console is only available to OWNER_ADMIN_IDS.")
             return
         await message.answer("SentinelAI owner console", reply_markup=owner_console_keyboard())
+        return
+    if text.startswith("/tvweb_config"):
+        if not settings.user_is_owner_admin(user_id):
+            await message.answer("Owner-only setup note. Tiny velvet rope situation.")
+            return
+        await message.answer(tvweb_config_text())
+        return
+    if text.startswith(("/persistence", "/backups")):
+        if not settings.user_is_owner_admin(user_id):
+            await message.answer("Owner-only storage note.")
+            return
+        await message.answer(persistence_text())
         return
     if text.startswith(("/authorize", "/deauthorize")):
         if not settings.user_is_owner_admin(user_id):

@@ -66,6 +66,19 @@ prompt_value() {
   export "${name}=${current}"
 }
 
+prompt_optional() {
+  local name="$1"
+  local default_value="$2"
+  local prompt="${3:-$name}"
+  local current="${!name:-}"
+  if [[ -n "$current" ]]; then
+    return
+  fi
+  read -r -p "Enter ${prompt} [${default_value}]: " current
+  current="${current:-$default_value}"
+  export "${name}=${current}"
+}
+
 random_hex() {
   openssl rand -hex 32
 }
@@ -111,6 +124,9 @@ write_env() {
   prompt_value AUTHORIZED_CHAT_IDS "-1001303757981,-1002370580254"
   prompt_value OWNER_ADMIN_IDS "762308466"
   prompt_value DEFAULT_NOTIFY_ADMIN_ID "$OWNER_ADMIN_IDS"
+  prompt_optional TVWEB_DATABASE_URL "" "TVWEB_DATABASE_URL from website DATABASE_URL, or blank"
+  prompt_optional TUTORIAL_DUMP_CHAT_ID "-1003743973576"
+  prompt_optional SUPPORT_TONE "playful, lightly sarcastic, chatty, funny, helpful, and never rude"
 
   WEBHOOK_SECRET="${WEBHOOK_SECRET:-$(random_hex)}"
   POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-$(random_password)}"
@@ -161,6 +177,16 @@ OPENAI_ESCALATION_MODEL=gpt-5.5
 
 GEMINI_API_KEY=
 GEMINI_MODEL=gemini-2.5-flash
+
+SUPPORT_ENABLED=true
+SUPPORT_AI_REPLIES=true
+SUPPORT_TONE=${SUPPORT_TONE}
+SUPPORT_REPLY_CLEANUP_SECONDS=180
+TVWEB_DATABASE_URL=${TVWEB_DATABASE_URL}
+TVWEB_SITE_BASE_URL=https://ibox-tv.com
+TVWEB_ANIME_BASE_URL=https://anime.ibox-tv.com
+TVWEB_MOVIES_BASE_URL=https://movies.ibox-tv.com
+TUTORIAL_DUMP_CHAT_ID=${TUTORIAL_DUMP_CHAT_ID}
 
 DEEPSEEK_API_KEY=
 DEEPSEEK_BASE_URL=https://api.deepseek.com
