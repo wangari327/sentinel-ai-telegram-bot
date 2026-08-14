@@ -9,13 +9,17 @@ from sqlalchemy.orm import Session
 from app.config import Settings
 from app.db.models import (
     AdminBinding,
+    BotSentMessage,
     Domain,
     Group,
     GroupSettings,
     ModerationEvent,
     PendingReview,
+    SupportIssue,
+    SupportRequest,
     TrainingExample,
     TrustedUser,
+    TutorialAsset,
     User,
     UserViolation,
 )
@@ -431,10 +435,261 @@ def count_examples(session: Session, group_id: int) -> dict[str, int]:
     return counts
 
 
+def count_moderation_events(session: Session, group_id: int) -> int:
+    return int(
+        session.scalar(
+            select(func.count(ModerationEvent.id)).where(ModerationEvent.group_id == group_id)
+        )
+        or 0
+    )
+
+
+def list_recent_moderation_events(
+    session: Session,
+    group_id: int | None = None,
+    *,
+    limit: int = 10,
+) -> list[ModerationEvent]:
+    query = select(ModerationEvent).order_by(ModerationEvent.created_at.desc()).limit(limit)
+    if group_id is not None:
+        query = query.where(ModerationEvent.group_id == group_id)
+    return list(session.scalars(query).all())
+
+
+def list_groups(session: Session) -> list[Group]:
+    return list(session.scalars(select(Group).order_by(Group.created_at.desc())).all())
+
+
+def set_group_authorized(
+    session: Session,
+    *,
+    telegram_chat_id: int,
+    authorized: bool,
+    settings: Settings,
+    title: str | None = None,
+) -> Group:
+    group = get_or_create_group(
+        session,
+        telegram_chat_id=telegram_chat_id,
+        title=title,
+        chat_type="supergroup",
+        settings=settings,
+    )
+    group.authorized = authorized
+    session.flush()
+    return group
+
+
+def upsert_support_request(
+    session: Session,
+    *,
+    group_id: int,
+    telegram_chat_id: int,
+    telegram_message_id: int,
+    sender_user_id: int | None,
+    title_query: str,
+    category_hint: str | None,
+    status: str,
+    normalized_text: str,
+    matched_show_id: int | None = None,
+    matched_title: str | None = None,
+) -> SupportRequest:
+    existing = session.scalar(
+        select(SupportRequest).where(
+            SupportRequest.group_id == group_id,
+            SupportRequest.title_query == title_query,
+            SupportRequest.category_hint == category_hint,
+            SupportRequest.status == status,
+        )
+    )
+    if existing:
+        existing.occurrence_count += 1
+        existing.telegram_message_id = telegram_message_id
+        existing.sender_user_id = sender_user_id
+        existing.normalized_text = normalized_text
+        existing.matched_show_id = matched_show_id or existing.matched_show_id
+        existing.matched_title = matched_title or existing.matched_title
+        session.flush()
+        return existing
+    request = SupportRequest(
+        group_id=group_id,
+        telegram_chat_id=telegram_chat_id,
+        telegram_message_id=telegram_message_id,
+        sender_user_id=sender_user_id,
+        title_query=title_query,
+        category_hint=category_hint,
+        status=status,
+        normalized_text=normalized_text,
+        matched_show_id=matched_show_id,
+        matched_title=matched_title,
+    )
+    session.add(request)
+    session.flush()
+    return request
+
+
+def upsert_support_issue(
+    session: Session,
+    *,
+    group_id: int,
+    telegram_chat_id: int,
+    telegram_message_id: int,
+    sender_user_id: int | None,
+    issue_type: str,
+    title_query: str | None,
+    category_hint: str | None,
+    normalized_text: str,
+    notes: str | None = None,
+    matched_show_id: int | None = None,
+    matched_title: str | None = None,
+) -> SupportIssue:
+    existing = session.scalar(
+        select(SupportIssue).where(
+            SupportIssue.group_id == group_id,
+            SupportIssue.issue_type == issue_type,
+            SupportIssue.title_query == title_query,
+            SupportIssue.category_hint == category_hint,
+            SupportIssue.status == "open",
+        )
+    )
+    if existing:
+        existing.occurrence_count += 1
+        existing.telegram_message_id = telegram_message_id
+        existing.sender_user_id = sender_user_id
+        existing.normalized_text = normalized_text
+        existing.notes = notes or existing.notes
+        existing.matched_show_id = matched_show_id or existing.matched_show_id
+        existing.matched_title = matched_title or existing.matched_title
+        session.flush()
+        return existing
+    issue = SupportIssue(
+        group_id=group_id,
+        telegram_chat_id=telegram_chat_id,
+        telegram_message_id=telegram_message_id,
+        sender_user_id=sender_user_id,
+        issue_type=issue_type,
+        title_query=title_query,
+        category_hint=category_hint,
+        normalized_text=normalized_text,
+        notes=notes,
+        matched_show_id=matched_show_id,
+        matched_title=matched_title,
+    )
+    session.add(issue)
+    session.flush()
+    return issue
+
+
+def count_open_support_issues(session: Session, group_id: int | None = None) -> int:
+    query = select(func.count(SupportIssue.id)).where(SupportIssue.status == "open")
+    if group_id is not None:
+        query = query.where(SupportIssue.group_id == group_id)
+    return int(session.scalar(query) or 0)
+
+
+def count_open_support_requests(session: Session, group_id: int | None = None) -> int:
+    query = select(func.count(SupportRequest.id)).where(SupportRequest.status == "open")
+    if group_id is not None:
+        query = query.where(SupportRequest.group_id == group_id)
+    return int(session.scalar(query) or 0)
+
+
+def list_recent_support_issues(
+    session: Session,
+    group_id: int | None = None,
+    *,
+    limit: int = 10,
+) -> list[SupportIssue]:
+    query = select(SupportIssue).order_by(SupportIssue.updated_at.desc()).limit(limit)
+    if group_id is not None:
+        query = query.where(SupportIssue.group_id == group_id)
+    return list(session.scalars(query).all())
+
+
+def list_recent_support_requests(
+    session: Session,
+    group_id: int | None = None,
+    *,
+    limit: int = 10,
+) -> list[SupportRequest]:
+    query = select(SupportRequest).order_by(SupportRequest.updated_at.desc()).limit(limit)
+    if group_id is not None:
+        query = query.where(SupportRequest.group_id == group_id)
+    return list(session.scalars(query).all())
+
+
+def save_tutorial_asset(
+    session: Session,
+    *,
+    label: str,
+    file_id: str,
+    file_type: str,
+    caption: str | None,
+    source_chat_id: int | None,
+    source_message_id: int | None,
+    created_by_admin_id: int | None,
+) -> TutorialAsset:
+    asset = session.scalar(select(TutorialAsset).where(TutorialAsset.label == label))
+    if asset is None:
+        asset = TutorialAsset(label=label, file_id=file_id, file_type=file_type)
+        session.add(asset)
+    asset.file_id = file_id
+    asset.file_type = file_type
+    asset.caption = caption
+    asset.source_chat_id = source_chat_id
+    asset.source_message_id = source_message_id
+    asset.created_by_admin_id = created_by_admin_id
+    session.flush()
+    return asset
+
+
+def get_tutorial_asset(session: Session, label: str = "default") -> TutorialAsset | None:
+    return session.scalar(select(TutorialAsset).where(TutorialAsset.label == label))
+
+
+def record_bot_sent_message(
+    session: Session,
+    *,
+    chat_id: int,
+    message_id: int,
+    purpose: str,
+    delete_after: datetime | None,
+) -> BotSentMessage:
+    sent = BotSentMessage(
+        chat_id=chat_id,
+        message_id=message_id,
+        purpose=purpose,
+        delete_after=delete_after,
+    )
+    session.add(sent)
+    session.flush()
+    return sent
+
+
+def due_bot_sent_messages(session: Session, now: datetime) -> list[BotSentMessage]:
+    return list(
+        session.scalars(
+            select(BotSentMessage).where(
+                BotSentMessage.delete_after.is_not(None),
+                BotSentMessage.delete_after <= now,
+            )
+        ).all()
+    )
+
+
+def delete_bot_sent_message_record(session: Session, sent_id: int) -> None:
+    session.execute(delete(BotSentMessage).where(BotSentMessage.id == sent_id))
+
+
 def forget_group_data(session: Session, group_id: int) -> None:
+    group = session.scalar(select(Group).where(Group.id == group_id))
     event_ids = select(ModerationEvent.id).where(ModerationEvent.group_id == group_id)
     session.execute(delete(PendingReview).where(PendingReview.moderation_event_id.in_(event_ids)))
+    if group is not None:
+        session.execute(delete(BotSentMessage).where(BotSentMessage.chat_id == group.telegram_chat_id))
     for model in (
+        SupportIssue,
+        SupportRequest,
         ModerationEvent,
         UserViolation,
         TrainingExample,

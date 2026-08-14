@@ -4,6 +4,11 @@ from dataclasses import asdict, dataclass
 
 from sqlalchemy.orm import Session
 
+from app.bot.support_actions import (
+    schedule_cleanup,
+    send_ephemeral_message,
+    send_tutorial_if_available,
+)
 from app.bot.telegram_actions import notify_admin_about_event
 from app.config import Settings
 from app.db import repositories
@@ -20,6 +25,8 @@ from app.moderation.normalizer import NormalizedMessage, normalize_telegram_mess
 from app.moderation.rules import compute_rule_score
 from app.moderation.scoring import Decision, combine_scores, decide_action
 from app.moderation.similarity import retrieve_examples
+from app.support.assistant import build_support_reply, detect_support_intent
+from app.support.ibox_search import search_tvweb
 
 
 @dataclass(frozen=True, slots=True)
@@ -30,6 +37,7 @@ class PipelineResult:
     action_result: ActionResult | None = None
     final_score: float = 0.0
     reasons: list[str] | None = None
+    support_replied: bool = False
 
 
 def should_skip(
@@ -59,6 +67,81 @@ def should_call_ai(*, features: object, group_settings: object) -> bool:
     if getattr(group_settings, "ai_scan_links_only", True) and not getattr(features, "contains_url", False):
         return False
     return getattr(features, "risk_signal_count", 0) > 0
+
+
+async def maybe_handle_support_message(
+    *,
+    message: object,
+    bot: object,
+    session: Session,
+    settings: Settings,
+    group: Group,
+    normalized: NormalizedMessage,
+    sender_user_id: int | None,
+) -> bool:
+    if not settings.support_enabled:
+        return False
+    intent = detect_support_intent(normalized.text)
+    if intent is None:
+        return False
+    matches = []
+    if intent.title_query:
+        matches = search_tvweb(
+            settings=settings,
+            query=intent.title_query,
+            category=intent.category_hint,
+        )
+    reply = build_support_reply(intent=intent, matches=matches, settings=settings)
+    if reply is None:
+        return False
+
+    if intent.kind == "request" and intent.title_query:
+        repositories.upsert_support_request(
+            session,
+            group_id=group.id,
+            telegram_chat_id=group.telegram_chat_id,
+            telegram_message_id=int(getattr(message, "message_id", 0)),
+            sender_user_id=sender_user_id,
+            title_query=intent.title_query,
+            category_hint=intent.category_hint,
+            status="found" if matches else "open" if settings.tvweb_database_url else "suggested_search",
+            normalized_text=normalized.text,
+            matched_show_id=matches[0].id if matches else None,
+            matched_title=matches[0].display_title if matches else None,
+        )
+    if intent.kind == "issue":
+        repositories.upsert_support_issue(
+            session,
+            group_id=group.id,
+            telegram_chat_id=group.telegram_chat_id,
+            telegram_message_id=int(getattr(message, "message_id", 0)),
+            sender_user_id=sender_user_id,
+            issue_type=intent.issue_type or "general",
+            title_query=intent.title_query,
+            category_hint=intent.category_hint,
+            normalized_text=normalized.text,
+            matched_show_id=matches[0].id if matches else None,
+            matched_title=matches[0].display_title if matches else None,
+        )
+
+    await send_ephemeral_message(
+        bot=bot,
+        session=session,
+        chat_id=group.telegram_chat_id,
+        text=reply.text,
+        settings=settings,
+        reply_to_message_id=int(getattr(message, "message_id", 0)),
+    )
+    if reply.should_send_tutorial:
+        await send_tutorial_if_available(
+            bot=bot,
+            session=session,
+            chat_id=group.telegram_chat_id,
+            settings=settings,
+            reply_to_message_id=int(getattr(message, "message_id", 0)),
+        )
+    schedule_cleanup(bot=bot, delay_seconds=settings.support_reply_cleanup_seconds)
+    return True
 
 
 def _message_sender_context(
@@ -240,6 +323,18 @@ async def process_group_message(
             domains=normalized.domains,
         )
 
+    support_replied = False
+    if not decision.delete and not decision.ban and ai_result.label == "not_spam":
+        support_replied = await maybe_handle_support_message(
+            message=message,
+            bot=bot,
+            session=session,
+            settings=settings,
+            group=group,
+            normalized=normalized,
+            sender_user_id=sender_user_id,
+        )
+
     return PipelineResult(
         status="processed",
         decision=decision,
@@ -247,6 +342,7 @@ async def process_group_message(
         action_result=action_result,
         final_score=score.final_score,
         reasons=score.reasons,
+        support_replied=support_replied,
     )
 
 

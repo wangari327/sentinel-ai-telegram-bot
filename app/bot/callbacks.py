@@ -12,6 +12,7 @@ from aiogram.exceptions import TelegramAPIError
 from aiogram.types import CallbackQuery
 from sqlalchemy import select
 
+from app.bot.keyboards import owner_console_keyboard
 from app.bot.permissions import user_is_chat_admin
 from app.config import settings
 from app.db import repositories
@@ -98,6 +99,16 @@ async def _answer(callback: CallbackQuery, text: str) -> None:
         return
 
 
+def _callback_user_id(callback: CallbackQuery) -> int:
+    return callback.from_user.id if callback.from_user else 0
+
+
+def _short(value: str | None, limit: int = 80) -> str:
+    if not value:
+        return "-"
+    return value if len(value) <= limit else f"{value[: limit - 1]}..."
+
+
 @router.callback_query(F.data.startswith("review:"))
 async def handle_review_callback(callback: CallbackQuery) -> None:
     parts = (callback.data or "").split(":", 2)
@@ -176,6 +187,78 @@ async def handle_review_callback(callback: CallbackQuery) -> None:
         except TelegramAPIError:
             return
     await _answer(callback, "Done.")
+
+
+@router.callback_query(F.data.startswith("console:"))
+async def handle_console_callback(callback: CallbackQuery) -> None:
+    if not settings.user_is_owner_admin(_callback_user_id(callback)):
+        await _answer(callback, "Owner console only.")
+        return
+    action = (callback.data or "").split(":", 1)[1]
+    with session_scope() as session:
+        if action == "stats":
+            groups = repositories.list_groups(session)
+            open_issues = repositories.count_open_support_issues(session)
+            open_requests = repositories.count_open_support_requests(session)
+            events = sum(repositories.count_moderation_events(session, group.id) for group in groups)
+            text = (
+                "SentinelAI stats\n"
+                f"Groups seen: {len(groups)}\n"
+                f"Moderation events: {events}\n"
+                f"Open support issues: {open_issues}\n"
+                f"Open content requests: {open_requests}"
+            )
+        elif action == "groups":
+            groups = repositories.list_groups(session)[:10]
+            if not groups:
+                text = "No groups seen yet."
+            else:
+                rows = [
+                    f"{'yes' if group.authorized else 'no '} | {group.telegram_chat_id} | {_short(group.title, 32)}"
+                    for group in groups
+                ]
+                text = "Authorized | Chat ID | Title\n" + "\n".join(rows)
+        elif action == "issues":
+            issues = repositories.list_recent_support_issues(session, limit=10)
+            if not issues:
+                text = "No support issues logged yet."
+            else:
+                text = "Recent support issues\n" + "\n".join(
+                    f"#{issue.id} {issue.issue_type} x{issue.occurrence_count}: {_short(issue.title_query or issue.normalized_text, 52)}"
+                    for issue in issues
+                )
+        elif action == "requests":
+            requests = repositories.list_recent_support_requests(session, limit=10)
+            if not requests:
+                text = "No content requests logged yet."
+            else:
+                text = "Recent content requests\n" + "\n".join(
+                    f"#{request.id} {request.status} x{request.occurrence_count}: {_short(request.title_query, 52)}"
+                    for request in requests
+                )
+        elif action == "history":
+            events = repositories.list_recent_moderation_events(session, limit=10)
+            if not events:
+                text = "No moderation history yet."
+            else:
+                text = "Recent moderation events\n" + "\n".join(
+                    f"#{event.id} {event.action_taken} {event.final_score:.2f}: {_short(event.normalized_text, 52)}"
+                    for event in events
+                )
+        elif action == "tutorial":
+            asset = repositories.get_tutorial_asset(session)
+            if asset:
+                text = f"Tutorial saved as {asset.file_type}. Forward a new video with /tutorial_save to replace it."
+            else:
+                text = "No tutorial saved yet. Forward the tutorial video here with /tutorial_save in the caption."
+        else:
+            text = "Unknown console action."
+    if callback.message:
+        try:
+            await callback.message.edit_text(text, reply_markup=owner_console_keyboard())
+        except TelegramAPIError:
+            pass
+    await _answer(callback, "Updated.")
 
 
 @router.callback_query(F.data.startswith("train:"))

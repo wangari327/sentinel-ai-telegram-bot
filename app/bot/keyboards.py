@@ -50,3 +50,22 @@ def training_label_keyboard(token: str) -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text="Cancel", callback_data=f"train:cancel:{token}")],
         ]
     )
+
+
+def owner_console_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="Stats", callback_data="console:stats"),
+                InlineKeyboardButton(text="Groups", callback_data="console:groups"),
+            ],
+            [
+                InlineKeyboardButton(text="Issues", callback_data="console:issues"),
+                InlineKeyboardButton(text="Requests", callback_data="console:requests"),
+            ],
+            [
+                InlineKeyboardButton(text="Spam history", callback_data="console:history"),
+                InlineKeyboardButton(text="Tutorial", callback_data="console:tutorial"),
+            ],
+        ]
+    )

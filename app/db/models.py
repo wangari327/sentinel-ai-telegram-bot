@@ -218,3 +218,69 @@ class PendingReview(Base):
         DateTime(timezone=True), default=now_utc, nullable=False
     )
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+
+
+class SupportIssue(TimestampMixin, Base):
+    __tablename__ = "support_issues"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    group_id: Mapped[int] = mapped_column(
+        ForeignKey("groups.id", ondelete="CASCADE"), index=True
+    )
+    telegram_chat_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    telegram_message_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    sender_user_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+    issue_type: Mapped[str] = mapped_column(String(32), index=True)
+    title_query: Mapped[str | None] = mapped_column(String(255), index=True)
+    category_hint: Mapped[str | None] = mapped_column(String(20), index=True)
+    status: Mapped[str] = mapped_column(String(32), default="open", index=True)
+    matched_show_id: Mapped[int | None] = mapped_column(Integer)
+    matched_title: Mapped[str | None] = mapped_column(String(255))
+    normalized_text: Mapped[str] = mapped_column(Text)
+    notes: Mapped[str | None] = mapped_column(Text)
+    occurrence_count: Mapped[int] = mapped_column(Integer, default=1)
+
+
+class SupportRequest(TimestampMixin, Base):
+    __tablename__ = "support_requests"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    group_id: Mapped[int] = mapped_column(
+        ForeignKey("groups.id", ondelete="CASCADE"), index=True
+    )
+    telegram_chat_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    telegram_message_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    sender_user_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+    title_query: Mapped[str] = mapped_column(String(255), index=True)
+    category_hint: Mapped[str | None] = mapped_column(String(20), index=True)
+    status: Mapped[str] = mapped_column(String(32), default="open", index=True)
+    matched_show_id: Mapped[int | None] = mapped_column(Integer)
+    matched_title: Mapped[str | None] = mapped_column(String(255))
+    normalized_text: Mapped[str] = mapped_column(Text)
+    occurrence_count: Mapped[int] = mapped_column(Integer, default=1)
+
+
+class TutorialAsset(TimestampMixin, Base):
+    __tablename__ = "tutorial_assets"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    label: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    file_id: Mapped[str] = mapped_column(String(512))
+    file_type: Mapped[str] = mapped_column(String(32))
+    caption: Mapped[str | None] = mapped_column(Text)
+    source_chat_id: Mapped[int | None] = mapped_column(BigInteger)
+    source_message_id: Mapped[int | None] = mapped_column(BigInteger)
+    created_by_admin_id: Mapped[int | None] = mapped_column(BigInteger)
+
+
+class BotSentMessage(Base):
+    __tablename__ = "bot_sent_messages"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    chat_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    message_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    purpose: Mapped[str] = mapped_column(String(64), index=True)
+    delete_after: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=now_utc, nullable=False
+    )

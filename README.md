@@ -51,6 +51,7 @@ Use `LEAVE_UNAUTHORIZED_CHATS=true` if you want the bot to leave groups it was a
 
 - `/start` - setup hint in private or group.
 - `/help` - command summary.
+- `/panel` - owner-only private button console.
 - `/setup` - verify permissions and activate authorized group setup.
 - `/status` - show authorization, mode, setup, and example counts.
 - `/mode` - change between `normal`, `auto_delete`, `silent`, `monitor_only`, and `aggressive`.
@@ -66,6 +67,13 @@ Use `LEAVE_UNAUTHORIZED_CHATS=true` if you want the bot to leave groups it was a
 - `/domains` - list configured domain rules.
 - `/privacy` - explain stored data and retention.
 
+Private owner commands:
+
+- `/panel` - open the button console for stats, groups, support issues, requests, history, and tutorial status.
+- `/authorize <chat_id>` - authorize a chat from private DM.
+- `/deauthorize <chat_id>` - remove DB authorization for a chat.
+- `/tutorial_save` - save a forwarded video/document as the default support tutorial.
+
 ## Modes
 
 - `monitor_only`: do not delete or ban; report suspicious content.
@@ -77,6 +85,23 @@ Use `LEAVE_UNAUTHORIZED_CHATS=true` if you want the bot to leave groups it was a
 Automatic bans are controlled separately from mode. Use `/ban_on` only after the bot has ban/restrict permission and you are comfortable with detections. Use `/ban_off` to keep deleting spam without banning users.
 
 Admin notifications are private DM review messages with action buttons. The admin user must start the bot in private chat first, otherwise Telegram may block the DM.
+
+## iBOX Support Assistant
+
+When `SUPPORT_ENABLED=true`, SentinelAI also watches non-spam group messages for lightweight support intents: movie/show requests, download/play tutorial questions, missing episodes, broken links, banned/removed items, and playback complaints. It replies only when a message clearly looks like support traffic, then deletes its own support replies after `SUPPORT_REPLY_CLEANUP_SECONDS`.
+
+If `TVWEB_DATABASE_URL` is configured, the bot searches the website `tv_shows` table and can steer users to iBOX TV results. If no match is found, it records the request so you can review demand later from `/panel`. Use a read-only database user for this connection where possible.
+
+```env
+SUPPORT_ENABLED=true
+SUPPORT_REPLY_CLEANUP_SECONDS=180
+TVWEB_DATABASE_URL=postgresql+psycopg://readonly:password@host:5432/tv_shows_db
+TVWEB_SITE_BASE_URL=https://ibox-tv.com
+TVWEB_ANIME_BASE_URL=https://anime.ibox-tv.com
+TVWEB_MOVIES_BASE_URL=https://movies.ibox-tv.com
+```
+
+To save a tutorial, forward the video/document to the bot privately with `/tutorial_save` in the caption. When users ask how to download or play files, the bot sends the saved tutorial if available.
 
 ## AI Providers
 

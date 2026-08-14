@@ -22,6 +22,12 @@ def _int(value: str | None, default: int) -> int:
     return int(value)
 
 
+def _optional_int(value: str | None) -> int | None:
+    if value is None or value == "":
+        return None
+    return int(value)
+
+
 def _float(value: str | None, default: float) -> float:
     if value is None or value == "":
         return default
@@ -96,6 +102,13 @@ class Settings:
     suspicious_high_threshold: float
     ai_scan_all_messages: bool
     ai_scan_links_only: bool
+    support_enabled: bool
+    support_reply_cleanup_seconds: int
+    tvweb_database_url: str
+    tvweb_site_base_url: str
+    tvweb_anime_base_url: str
+    tvweb_movies_base_url: str
+    tutorial_dump_chat_id: int | None
 
     @property
     def webhook_path(self) -> str:
@@ -211,6 +224,13 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         suspicious_high_threshold=_float(source.get("SUSPICIOUS_HIGH_THRESHOLD"), 0.87),
         ai_scan_all_messages=_bool(source.get("AI_SCAN_ALL_MESSAGES"), False),
         ai_scan_links_only=_bool(source.get("AI_SCAN_LINKS_ONLY"), True),
+        support_enabled=_bool(source.get("SUPPORT_ENABLED"), True),
+        support_reply_cleanup_seconds=_int(source.get("SUPPORT_REPLY_CLEANUP_SECONDS"), 180),
+        tvweb_database_url=normalize_database_url(source.get("TVWEB_DATABASE_URL", "")),
+        tvweb_site_base_url=source.get("TVWEB_SITE_BASE_URL", "https://ibox-tv.com"),
+        tvweb_anime_base_url=source.get("TVWEB_ANIME_BASE_URL", "https://anime.ibox-tv.com"),
+        tvweb_movies_base_url=source.get("TVWEB_MOVIES_BASE_URL", "https://movies.ibox-tv.com"),
+        tutorial_dump_chat_id=_optional_int(source.get("TUTORIAL_DUMP_CHAT_ID")),
     )
 
 

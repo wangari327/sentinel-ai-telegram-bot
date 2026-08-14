@@ -15,6 +15,7 @@ from app.bot.callbacks import router as callbacks_router
 from app.bot.handlers.commands import router as commands_router
 from app.bot.handlers.group_messages import router as group_messages_router
 from app.bot.handlers.private_messages import router as private_messages_router
+from app.bot.support_actions import start_cleanup_loop
 from app.config import settings
 from app.db.session import init_db
 from app.logging import configure_logging, get_logger
@@ -23,6 +24,7 @@ logger = get_logger(__name__)
 
 bot: Bot | None = None
 dispatcher: Dispatcher | None = None
+cleanup_task: asyncio.Task[None] | None = None
 
 
 def build_dispatcher() -> Dispatcher:
@@ -52,17 +54,20 @@ async def lifespan(_: FastAPI):
     configure_logging(settings.log_level)
     if settings.auto_migrate:
         init_db()
-    global bot, dispatcher
+    global bot, dispatcher, cleanup_task
     if settings.bot_token:
         bot = Bot(
             token=settings.bot_token,
             default=DefaultBotProperties(parse_mode=ParseMode.HTML),
         )
         dispatcher = build_dispatcher()
+        cleanup_task = start_cleanup_loop(bot=bot)
         await set_webhook_if_enabled(bot)
     else:
         logger.warning("BOT_TOKEN is empty; webhook will reject Telegram updates")
     yield
+    if cleanup_task:
+        cleanup_task.cancel()
     if bot:
         await bot.session.close()
 
@@ -106,9 +111,11 @@ async def run_polling() -> None:
         default=DefaultBotProperties(parse_mode=ParseMode.HTML),
     )
     dp = build_dispatcher()
+    cleanup = start_cleanup_loop(bot=polling_bot)
     try:
         await dp.start_polling(polling_bot)
     finally:
+        cleanup.cancel()
         await polling_bot.session.close()
 
 
