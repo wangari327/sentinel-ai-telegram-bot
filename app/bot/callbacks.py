@@ -125,7 +125,7 @@ def tvweb_config_text(cache_status: str | None = None) -> str:
         f"Current TVWEB_DATABASE_URL: {status}\n\n"
         "From your website .env, copy the value named DATABASE_URL.\n"
         "Paste it into Sentinel's VPS .env as:\n"
-        "TVWEB_DATABASE_URL=<paste website DATABASE_URL here>\n\n"
+        "TVWEB_DATABASE_URL=PASTE_WEBSITE_DATABASE_URL_HERE\n\n"
         "Do not use MONGO_URI_1, MONGO_URI_2, MONGO_DB_NAME, MONGO_COL_NAME, "
         "or REDIS_URL for this lookup. Sentinel searches the website Postgres "
         "tv_shows table through TVWEB_DATABASE_URL.\n\n"
@@ -316,7 +316,11 @@ async def handle_console_callback(callback: CallbackQuery) -> None:
             text = "Unknown console action."
     if callback.message:
         try:
-            await callback.message.edit_text(text, reply_markup=owner_console_keyboard())
+            await callback.message.edit_text(
+                text,
+                reply_markup=owner_console_keyboard(),
+                parse_mode=None,
+            )
         except TelegramAPIError:
             pass
     await _answer(callback, "Updated.")

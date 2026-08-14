@@ -46,6 +46,7 @@ def test_owner_console_config_text_points_to_tvweb_database_url() -> None:
     assert "DATABASE_URL" in text
     assert "TVWEB_DATABASE_URL" in text
     assert "MONGO_URI_1" in text
+    assert "<paste" not in text
 
 
 def test_owner_console_persistence_text_explains_postgres_storage() -> None:

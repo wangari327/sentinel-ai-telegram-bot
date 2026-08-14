@@ -38,14 +38,20 @@ async def on_private_message(message: Message) -> None:
             await message.answer("Owner-only setup note. Tiny velvet rope situation.")
             return
         with session_scope() as session:
-            await message.answer(tvweb_config_text(tvweb_cache_status_text(session)))
+            await message.answer(
+                tvweb_config_text(tvweb_cache_status_text(session)),
+                parse_mode=None,
+            )
         return
     if text.startswith("/support_status"):
         if not settings.user_is_owner_admin(user_id):
             await message.answer("Owner-only support status.")
             return
         with session_scope() as session:
-            await message.answer(tvweb_config_text(tvweb_cache_status_text(session)))
+            await message.answer(
+                tvweb_config_text(tvweb_cache_status_text(session)),
+                parse_mode=None,
+            )
         return
     if text.startswith("/refresh_tvweb_cache"):
         if not settings.user_is_owner_admin(user_id):
@@ -56,14 +62,15 @@ async def on_private_message(message: Message) -> None:
         with session_scope() as session:
             await message.answer(
                 f"Refresh finished. Cached {count} items.\n\n"
-                f"{tvweb_cache_status_text(session)}"
+                f"{tvweb_cache_status_text(session)}",
+                parse_mode=None,
             )
         return
     if text.startswith(("/persistence", "/backups")):
         if not settings.user_is_owner_admin(user_id):
             await message.answer("Owner-only storage note.")
             return
-        await message.answer(persistence_text())
+        await message.answer(persistence_text(), parse_mode=None)
         return
     if text.startswith(("/authorize", "/deauthorize")):
         if not settings.user_is_owner_admin(user_id):
