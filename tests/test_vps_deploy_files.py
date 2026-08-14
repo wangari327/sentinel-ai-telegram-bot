@@ -19,5 +19,6 @@ def test_install_script_uses_expected_domain_and_keeps_existing_env() -> None:
     assert "prompt_optional TVWEB_DATABASE_URL" in script
     assert "TUTORIAL_DUMP_CHAT_ID=${TUTORIAL_DUMP_CHAT_ID}" in script
     assert "SUPPORT_AI_REPLIES=true" in script
+    assert "SUPPORT_REPLY_CLEANUP_SECONDS=86400" in script
     assert "TVWEB_CACHE_REFRESH_ON_STARTUP=false" in script
     assert "TVWEB_CACHE_REFRESH_INTERVAL_MINUTES=360" in script

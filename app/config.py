@@ -255,7 +255,7 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
             "SUPPORT_TONE",
             "playful, lightly sarcastic, chatty, funny, helpful, and never rude",
         ),
-        support_reply_cleanup_seconds=_int(source.get("SUPPORT_REPLY_CLEANUP_SECONDS"), 180),
+        support_reply_cleanup_seconds=_int(source.get("SUPPORT_REPLY_CLEANUP_SECONDS"), 86400),
         tvweb_database_url=normalize_database_url(source.get("TVWEB_DATABASE_URL", "")),
         tvweb_site_base_url=source.get("TVWEB_SITE_BASE_URL", "https://ibox-tv.com"),
         tvweb_anime_base_url=source.get("TVWEB_ANIME_BASE_URL", "https://anime.ibox-tv.com"),

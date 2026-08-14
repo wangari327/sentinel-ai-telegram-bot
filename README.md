@@ -108,7 +108,7 @@ PRIVATE_SUPPORT_ENABLED=true
 PRIVATE_ABUSE_SILENCE_AFTER=3
 SUPPORT_AI_REPLIES=true
 SUPPORT_TONE=playful, lightly sarcastic, chatty, funny, helpful, and never rude
-SUPPORT_REPLY_CLEANUP_SECONDS=180
+SUPPORT_REPLY_CLEANUP_SECONDS=86400
 TVWEB_DATABASE_URL=postgresql+psycopg://readonly:password@host:5432/tv_shows_db
 TVWEB_SITE_BASE_URL=https://ibox-tv.com
 TVWEB_ANIME_BASE_URL=https://anime.ibox-tv.com
@@ -126,6 +126,8 @@ To save a tutorial, forward the video/document to the bot privately with `/tutor
 Support intent is AI-assisted when `SUPPORT_AI_INTENT_ENABLED=true`. The rule parser still catches obvious cases quickly, but when wording is fuzzy the AI decides whether the message is a title request, broken/missing/banned/playback issue, tutorial/how-to question, or ordinary chatter. `SUPPORT_AI_INTENT_THRESHOLD` controls how confident the AI must be before Sentinel replies or logs anything.
 
 Private user support is enabled with `PRIVATE_SUPPORT_ENABLED=true`. Normal users who press Start in the bot DM get iBOX support buttons and can ask the same search/request/issue/tutorial questions privately. Private spam, abusive messages, explicit bait, malicious code snippets, and unsupported media-only uploads are logged as private moderation events; after `PRIVATE_ABUSE_SILENCE_AFTER` strikes, Sentinel stops replying to that private user.
+
+`SUPPORT_REPLY_CLEANUP_SECONDS=86400` keeps group support replies around for one day before Sentinel deletes its own messages. Set it to `0` to disable cleanup, or lower it if a group gets noisy.
 
 Support answers are factual first, then AI-polished when `SUPPORT_AI_REPLIES=true` and your configured `AI_PROVIDER` supports chat completions. If the provider fails, the bot falls back to the plain factual reply.
 
