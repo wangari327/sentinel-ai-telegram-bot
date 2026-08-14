@@ -8,7 +8,18 @@ from app.config import Settings
 from app.support.ibox_search import IboxItem, item_url, normalize_title_query, search_url
 
 ISSUE_TYPES = {
-    "broken_link": ("broken", "not working", "dead link", "invalid link", "link issue"),
+    "broken_link": (
+        "broken",
+        "expired",
+        "expire",
+        "fix",
+        "not working",
+        "dead link",
+        "invalid link",
+        "link expired",
+        "link issue",
+        "please fix",
+    ),
     "missing_episode": ("missing episode", "episode missing", "no episode", "missing ep"),
     "banned": ("banned", "copyright", "removed", "taken down", "takedown"),
     "playback": ("not playing", "cannot play", "won't play", "sound", "subtitles"),
@@ -71,6 +82,8 @@ STOP_PREFIXES = (
     "please",
     "pls",
     "plz",
+    "hi",
+    "hello",
     "can you",
     "could you",
     "can i get",
@@ -89,6 +102,8 @@ STOP_PREFIXES = (
     "add",
     "search for",
     "looking for",
+    "link",
+    "links",
 )
 
 
@@ -148,7 +163,7 @@ def _extract_title_query(text: str) -> str | None:
     value = re.sub(
         r"\b(?:broken|not\s+working|dead\s+link|invalid\s+link|missing\s+episode|"
         r"episode\s+missing|banned|copyright|removed|taken\s+down|not\s+playing|"
-        r"cannot\s+play|won't\s+play)\b",
+        r"cannot\s+play|won't\s+play|expired|expire|please\s+fix|fix|thanks)\b",
         " ",
         value,
         flags=re.IGNORECASE,
@@ -163,6 +178,8 @@ def _extract_title_query(text: str) -> str | None:
                 value = value[len(prefix) :].strip(" .:-")
                 lower = value.casefold()
                 changed = True
+    value = re.sub(r"\s+(?:is|are)$", "", value, flags=re.IGNORECASE)
+    value = normalize_title_query(value)
     value = re.sub(r"\b(?:movie|film|anime|series|season|episode|tv\s+show|show)\b", " ", value, flags=re.IGNORECASE)
     value = normalize_title_query(value)
     value = re.sub(r"^(?:the|a|an)\s+", "", value, flags=re.IGNORECASE)

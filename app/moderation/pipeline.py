@@ -215,6 +215,20 @@ async def process_group_message(
         is_trusted=is_trusted,
         previous_violation_score=previous_violation_score,
     )
+    support_replied = False
+    if sender.is_admin or sender.is_trusted:
+        support_replied = await maybe_handle_support_message(
+            message=message,
+            bot=bot,
+            session=session,
+            settings=settings,
+            group=group,
+            normalized=normalized,
+            sender_user_id=sender_user_id,
+        )
+        if support_replied:
+            return PipelineResult(status="support_replied", support_replied=True)
+
     if should_skip(
         normalized=normalized,
         sender=sender,
@@ -335,7 +349,6 @@ async def process_group_message(
             domains=normalized.domains,
         )
 
-    support_replied = False
     if not decision.delete and not decision.ban and ai_result.label == "not_spam":
         support_replied = await maybe_handle_support_message(
             message=message,

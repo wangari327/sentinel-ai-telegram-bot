@@ -44,6 +44,15 @@ def test_detects_broken_link_issue() -> None:
     assert "Shogun" in (intent.title_query or "")
 
 
+def test_detects_expired_link_issue_from_group_language() -> None:
+    intent = detect_support_intent("Hi\nLink lioness is expired\nPlease fix\nThanks")
+
+    assert intent is not None
+    assert intent.kind == "issue"
+    assert intent.issue_type == "broken_link"
+    assert intent.title_query == "lioness"
+
+
 def test_detects_howto_request() -> None:
     intent = detect_support_intent("How do I download and play the files?")
 
