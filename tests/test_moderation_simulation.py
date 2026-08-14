@@ -1,14 +1,17 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import date
 
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
 from app.config import load_settings
 from app.db import repositories
-from app.db.models import Base, ModerationEvent, TvwebCatalogItem
+from app.db.models import Base, ModerationEvent, SupportIssue, SupportRequest, TvwebCatalogItem
+from app.moderation import pipeline
 from app.moderation.pipeline import process_group_message
+from app.support.tmdb import TmdbAvailability
 
 
 @dataclass(slots=True)
@@ -249,3 +252,140 @@ async def test_pipeline_clarifies_season_only_reply_instead_of_random_search() -
     assert "Quick check" in str(bot.sent[0]["text"])
     assert "The Walking Dead" in str(bot.sent[0]["text"])
     assert "High Desert" not in str(bot.sent[0]["text"])
+
+
+async def test_pipeline_uses_tmdb_future_episode_instead_of_logging_issue(monkeypatch) -> None:
+    settings = load_settings(
+        {
+            "AUTHORIZED_CHAT_IDS": "-1001",
+            "DEFAULT_GROUP_MODE": "normal",
+            "AI_PROVIDER": "rules_only",
+            "AI_FALLBACK_PROVIDER": "rules_only",
+            "SUPPORT_ENABLED": "true",
+            "SUPPORT_AI_REPLIES": "false",
+            "SUPPORT_REPLY_CLEANUP_SECONDS": "0",
+            "TMDB_BEARER_TOKEN": "token",
+        }
+    )
+    bot = FakeBot()
+    message = FakeMessage(text="Missing episode 8 Silo season 3")
+
+    async def fake_resolve_tmdb_availability(**kwargs) -> TmdbAvailability:
+        return TmdbAvailability(
+            found=True,
+            title="Silo",
+            media_type="tv",
+            requested_season_exists=True,
+            requested_episode_exists=True,
+            season_number=3,
+            episode_number=8,
+            episode_air_date=date(2099, 9, 4),
+        )
+
+    monkeypatch.setattr(pipeline, "resolve_tmdb_availability", fake_resolve_tmdb_availability)
+
+    with _session() as session:
+        group = repositories.get_or_create_group(
+            session,
+            telegram_chat_id=-1001,
+            title="Series 2022 Requests",
+            chat_type="supergroup",
+            settings=settings,
+        )
+        group.setup_completed = True
+        session.add(
+            TvwebCatalogItem(
+                tvweb_id=77,
+                title="Silo",
+                title_key="silo",
+                episode_title="Season 3 Episode 1-7",
+                category="tv",
+                slug="silo-season-3-episode-1-7",
+                year=2026,
+                rating=8.0,
+                download_link=None,
+            )
+        )
+
+        result = await process_group_message(
+            message=message,
+            bot=bot,
+            session=session,
+            settings=settings,
+            permissions=FakePermissions(),
+            sender_is_admin=False,
+        )
+        issue = session.scalar(select(SupportIssue))
+
+    assert result.support_replied
+    assert issue is None
+    assert bot.sent
+    assert "Episode not aired yet" in str(bot.sent[0]["text"])
+
+
+async def test_pipeline_filters_wrong_season_match_before_request_reply(monkeypatch) -> None:
+    settings = load_settings(
+        {
+            "AUTHORIZED_CHAT_IDS": "-1001",
+            "DEFAULT_GROUP_MODE": "normal",
+            "AI_PROVIDER": "rules_only",
+            "AI_FALLBACK_PROVIDER": "rules_only",
+            "SUPPORT_ENABLED": "true",
+            "SUPPORT_AI_REPLIES": "false",
+            "SUPPORT_REPLY_CLEANUP_SECONDS": "0",
+            "TMDB_BEARER_TOKEN": "token",
+        }
+    )
+    bot = FakeBot()
+    message = FakeMessage(text="Requesting Silo season 4")
+
+    async def fake_resolve_tmdb_availability(**kwargs) -> TmdbAvailability:
+        return TmdbAvailability(
+            found=True,
+            title="Silo",
+            media_type="tv",
+            requested_season_exists=True,
+            season_number=4,
+            season_air_date=date(2099, 12, 12),
+        )
+
+    monkeypatch.setattr(pipeline, "resolve_tmdb_availability", fake_resolve_tmdb_availability)
+
+    with _session() as session:
+        group = repositories.get_or_create_group(
+            session,
+            telegram_chat_id=-1001,
+            title="Series 2022 Requests",
+            chat_type="supergroup",
+            settings=settings,
+        )
+        group.setup_completed = True
+        session.add(
+            TvwebCatalogItem(
+                tvweb_id=77,
+                title="Silo",
+                title_key="silo",
+                episode_title="Season 3 Episode 1-7",
+                category="tv",
+                slug="silo-season-3-episode-1-7",
+                year=2026,
+                rating=8.0,
+                download_link=None,
+            )
+        )
+
+        result = await process_group_message(
+            message=message,
+            bot=bot,
+            session=session,
+            settings=settings,
+            permissions=FakePermissions(),
+            sender_is_admin=False,
+        )
+        request = session.scalar(select(SupportRequest))
+
+    assert result.support_replied
+    assert request is None
+    assert bot.sent
+    assert "Season not aired yet" in str(bot.sent[0]["text"])
+    assert "Season 3 Episode 1-7" not in str(bot.sent[0]["text"])

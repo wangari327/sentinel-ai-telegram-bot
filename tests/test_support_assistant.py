@@ -1,11 +1,23 @@
+from datetime import date
+
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from app.config import load_settings
 from app.db.models import Base, TvwebCatalogItem
-from app.support.assistant import SupportReply, build_support_reply, detect_support_intent
+from app.support.assistant import (
+    SupportIntent,
+    SupportReply,
+    availability_blocks_logging,
+    build_availability_reply,
+    build_support_reply,
+    detect_support_intent,
+    extract_season_episode_numbers,
+    filter_matches_for_requested_part,
+)
 from app.support.ibox_search import IboxItem, item_url, search_tvweb_cache, search_url
 from app.support.responder import render_support_reply, select_support_chat_config
+from app.support.tmdb import TmdbAvailability
 
 
 def test_detects_movie_request() -> None:
@@ -49,6 +61,16 @@ def test_season_only_message_asks_for_clarification() -> None:
     assert intent.context_title == "The Walking Dead: Dead City"
 
 
+def test_bare_title_with_season_is_request_with_clean_title() -> None:
+    intent = detect_support_intent("Silo season 4", allow_bare_title=True)
+
+    assert intent is not None
+    assert intent.kind == "request"
+    assert intent.title_query == "Silo"
+    assert intent.category_hint == "tv"
+    assert intent.season_number == 4
+
+
 def test_builds_clarification_reply_with_context_button() -> None:
     settings = load_settings({"TVWEB_SITE_BASE_URL": "https://ibox-tv.com"})
     intent = detect_support_intent(
@@ -90,6 +112,24 @@ def test_issue_title_strips_season_episode_noise() -> None:
     assert intent is not None
     assert intent.kind == "issue"
     assert intent.title_query == "Silo"
+    assert intent.season_number == 3
+    assert intent.episode_number == 1
+
+
+def test_missing_episode_title_query_keeps_title_only() -> None:
+    intent = detect_support_intent("Missing episode 8 Silo season 3")
+
+    assert intent is not None
+    assert intent.kind == "issue"
+    assert intent.issue_type == "missing_episode"
+    assert intent.title_query == "Silo"
+    assert intent.season_number == 3
+    assert intent.episode_number == 8
+
+
+def test_extracts_compact_season_episode_notation() -> None:
+    assert extract_season_episode_numbers("S03E08") == (3, 8)
+    assert extract_season_episode_numbers("s3 e8") == (3, 8)
 
 
 def test_detects_howto_request() -> None:
@@ -155,6 +195,74 @@ def test_builds_search_reply_for_found_item() -> None:
     assert "https://ibox-tv.com/show/shogun-season-1" in reply.text
     assert any(button.url == "https://ibox-tv.com/show/shogun-season-1" for button in reply.buttons)
     assert item_url(settings, item) == "https://ibox-tv.com/show/shogun-season-1"
+
+
+def test_requested_episode_filter_understands_ranges() -> None:
+    item = IboxItem(
+        id=1,
+        title="Silo",
+        episode_title="Season 3 Episode 1-7",
+        category="tv",
+        slug="silo-season-3-episode-1-7",
+        year=2026,
+        rating=8.0,
+        download_link=None,
+    )
+
+    matching = SupportIntent(
+        kind="request",
+        title_query="Silo",
+        category_hint="tv",
+        season_number=3,
+        episode_number=4,
+    )
+    missing = SupportIntent(
+        kind="request",
+        title_query="Silo",
+        category_hint="tv",
+        season_number=3,
+        episode_number=8,
+    )
+
+    assert filter_matches_for_requested_part([item], matching) == [item]
+    assert filter_matches_for_requested_part([item], missing) == []
+
+
+def test_future_episode_availability_blocks_dashboard_logging() -> None:
+    settings = load_settings({"TVWEB_SITE_BASE_URL": "https://ibox-tv.com"})
+    intent = SupportIntent(
+        kind="issue",
+        title_query="Silo",
+        category_hint="tv",
+        issue_type="missing_episode",
+        season_number=3,
+        episode_number=8,
+    )
+    availability = TmdbAvailability(
+        found=True,
+        title="Silo",
+        media_type="tv",
+        requested_season_exists=True,
+        requested_episode_exists=True,
+        season_number=3,
+        episode_number=8,
+        episode_air_date=date(2026, 9, 4),
+        episode_name="The Math Is Rude",
+    )
+
+    reply = build_availability_reply(
+        intent=intent,
+        matches=[],
+        settings=settings,
+        availability=availability,
+        today=date(2026, 8, 14),
+    )
+
+    assert availability_blocks_logging(intent, availability, today=date(2026, 8, 14))
+    assert reply is not None
+    assert "Episode not aired yet" in reply.text
+    assert "September 4, 2026" in reply.text
+    assert not reply.allow_ai_rewrite
 
 
 def test_without_tvweb_db_request_points_to_search_page() -> None:

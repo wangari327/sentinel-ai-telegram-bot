@@ -28,16 +28,22 @@ from app.moderation.scoring import Decision, combine_scores, decide_action
 from app.moderation.similarity import retrieve_examples
 from app.support.assistant import (
     SupportIntent,
+    SupportReply,
+    availability_blocks_logging,
+    build_availability_reply,
     build_support_reply,
     detect_support_intent,
     extract_support_context_title,
+    filter_matches_for_requested_part,
+    title_query_with_requested_part,
 )
-from app.support.ibox_search import search_tvweb_cache
+from app.support.ibox_search import IboxItem, search_tvweb_cache
 from app.support.intent_ai import (
     choose_support_merge_candidate_with_ai,
     classify_support_intent_with_ai,
 )
 from app.support.responder import render_support_reply
+from app.support.tmdb import TmdbAvailability, resolve_tmdb_availability
 
 
 @dataclass(frozen=True, slots=True)
@@ -130,8 +136,41 @@ async def maybe_handle_support_message(
             query=intent.title_query,
             category=intent.category_hint,
         )
+        matches = filter_matches_for_requested_part(matches, intent)
+
+    availability: TmdbAvailability | None = None
+    if intent.kind in {"release", "request", "issue"} and intent.title_query:
+        availability = await resolve_tmdb_availability(
+            settings=settings,
+            title_query=intent.title_query,
+            category_hint=intent.category_hint,
+            season_number=intent.season_number,
+            episode_number=intent.episode_number,
+        )
+        if availability_blocks_logging(intent, availability):
+            reply = build_availability_reply(
+                intent=intent,
+                matches=matches,
+                settings=settings,
+                availability=availability,
+            )
+            if reply is not None:
+                await _send_support_reply(
+                    message=message,
+                    bot=bot,
+                    session=session,
+                    settings=settings,
+                    group=group,
+                    normalized=normalized,
+                    intent=intent,
+                    matches=matches,
+                    reply=reply,
+                )
+                return True
+
     occurrence_count: int | None = None
     if intent.kind == "request" and intent.title_query:
+        record_title_query = title_query_with_requested_part(intent) or intent.title_query
         status = (
             "found" if matches else "open" if settings.tvweb_database_url else "suggested_search"
         )
@@ -151,7 +190,7 @@ async def maybe_handle_support_message(
             telegram_chat_id=group.telegram_chat_id,
             telegram_message_id=int(getattr(message, "message_id", 0)),
             sender_user_id=sender_user_id,
-            title_query=intent.title_query,
+            title_query=record_title_query,
             category_hint=intent.category_hint,
             status=status,
             normalized_text=normalized.text,
@@ -161,6 +200,7 @@ async def maybe_handle_support_message(
         )
         occurrence_count = request.occurrence_count
     if intent.kind == "issue":
+        record_title_query = title_query_with_requested_part(intent)
         issue_type = intent.issue_type or "general"
         merge_issue_id = await _choose_issue_merge_id(
             session=session,
@@ -178,7 +218,7 @@ async def maybe_handle_support_message(
             telegram_message_id=int(getattr(message, "message_id", 0)),
             sender_user_id=sender_user_id,
             issue_type=issue_type,
-            title_query=intent.title_query,
+            title_query=record_title_query,
             category_hint=intent.category_hint,
             normalized_text=normalized.text,
             matched_show_id=matches[0].id if matches else None,
@@ -192,9 +232,36 @@ async def maybe_handle_support_message(
         matches=matches,
         settings=settings,
         occurrence_count=occurrence_count,
+        availability=availability,
     )
     if reply is None:
         return False
+    await _send_support_reply(
+        message=message,
+        bot=bot,
+        session=session,
+        settings=settings,
+        group=group,
+        normalized=normalized,
+        intent=intent,
+        matches=matches,
+        reply=reply,
+    )
+    return True
+
+
+async def _send_support_reply(
+    *,
+    message: object,
+    bot: object,
+    session: Session,
+    settings: Settings,
+    group: Group,
+    normalized: NormalizedMessage,
+    intent: SupportIntent,
+    matches: list[IboxItem],
+    reply: SupportReply,
+) -> None:
     reply_text = await render_support_reply(
         factual_reply=reply,
         intent=intent,
@@ -202,7 +269,6 @@ async def maybe_handle_support_message(
         settings=settings,
         user_text=normalized.text,
     )
-
     await send_ephemeral_message(
         bot=bot,
         session=session,
@@ -221,7 +287,6 @@ async def maybe_handle_support_message(
             reply_to_message_id=int(getattr(message, "message_id", 0)),
         )
     schedule_cleanup(bot=bot, delay_seconds=settings.support_reply_cleanup_seconds)
-    return True
 
 
 def _message_reply_context_title(message: object) -> str | None:
@@ -261,7 +326,7 @@ async def _choose_issue_merge_id(
         session,
         group_id=group_id,
         issue_type=issue_type,
-        title_query=intent.title_query,
+        title_query=title_query_with_requested_part(intent),
         category_hint=intent.category_hint,
         matched_show_id=matched_show_id,
         matched_title=matched_title,
@@ -277,7 +342,7 @@ async def _choose_issue_merge_id(
     return await choose_support_merge_candidate_with_ai(
         kind="issue",
         text=normalized.text,
-        title_query=intent.title_query,
+        title_query=title_query_with_requested_part(intent),
         issue_type=issue_type,
         candidates=[_issue_merge_candidate(candidate) for candidate in candidates],
         settings=settings,
@@ -300,7 +365,7 @@ async def _choose_request_merge_id(
     deterministic = repositories.find_support_request_merge_candidate(
         session,
         group_id=group_id,
-        title_query=intent.title_query,
+        title_query=title_query_with_requested_part(intent) or intent.title_query,
         status=status,
         category_hint=intent.category_hint,
         matched_show_id=matched_show_id,
@@ -317,7 +382,7 @@ async def _choose_request_merge_id(
     return await choose_support_merge_candidate_with_ai(
         kind="request",
         text=normalized.text,
-        title_query=intent.title_query,
+        title_query=title_query_with_requested_part(intent) or intent.title_query,
         issue_type=None,
         candidates=[_request_merge_candidate(candidate) for candidate in candidates],
         settings=settings,

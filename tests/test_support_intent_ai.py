@@ -42,6 +42,27 @@ def test_ai_intent_accepts_fuzzy_expired_link_issue() -> None:
     assert intent.issue_type == "broken_link"
 
 
+def test_ai_intent_preserves_season_episode_numbers() -> None:
+    settings = load_settings({})
+
+    intent = _intent_from_data(
+        {
+            "kind": "issue",
+            "confidence": 0.92,
+            "title_query": "Silo",
+            "category_hint": "tv",
+            "issue_type": "missing_episode",
+            "season_number": 3,
+            "episode_number": 8,
+        },
+        settings=settings,
+    )
+
+    assert intent is not None
+    assert intent.season_number == 3
+    assert intent.episode_number == 8
+
+
 def test_ai_intent_accepts_howto_without_title() -> None:
     settings = load_settings({})
 

@@ -77,6 +77,16 @@ def test_tvweb_cache_config_defaults() -> None:
     assert settings.tvweb_cache_refresh_interval_minutes == 360
     assert settings.tvweb_cache_refresh_times == ()
     assert settings.tvweb_cache_refresh_limit == 5000
+    assert settings.tmdb_metadata_enabled
+    assert settings.tmdb_bearer_token == ""
+    assert settings.tmdb_base_url == "https://api.themoviedb.org/3"
+    assert settings.tmdb_cache_ttl_seconds == 21600
+
+
+def test_tmdb_bearer_token_alias_loading() -> None:
+    settings = load_settings({"TMDB_READ_ACCESS_TOKEN": "tmdb-token"})
+
+    assert settings.tmdb_bearer_token == "tmdb-token"
 
 
 def test_app_json_is_valid_heroku_button_json() -> None:

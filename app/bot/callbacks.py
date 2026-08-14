@@ -131,6 +131,7 @@ def _masked(value: str | None) -> str:
 
 def tvweb_config_text(cache_status: str | None = None) -> str:
     status = _masked(settings.tvweb_database_url)
+    tmdb_status = _masked(settings.tmdb_bearer_token)
     cache_settings = (
         "AI support intent\n"
         f"Enabled: {settings.support_ai_intent_enabled}\n"
@@ -139,6 +140,11 @@ def tvweb_config_text(cache_status: str | None = None) -> str:
         "Private support\n"
         f"Enabled: {settings.private_support_enabled}\n"
         f"Silence after abuse count: {settings.private_abuse_silence_after}\n\n"
+        "TMDB metadata\n"
+        f"Enabled: {settings.tmdb_metadata_enabled}\n"
+        f"TMDB_BEARER_TOKEN: {tmdb_status}\n"
+        f"Language/region: {settings.tmdb_language}/{settings.tmdb_region}\n"
+        f"Cache TTL seconds: {settings.tmdb_cache_ttl_seconds}\n\n"
         "Cache settings\n"
         f"Enabled: {settings.tvweb_cache_enabled}\n"
         f"Refresh on startup: {settings.tvweb_cache_refresh_on_startup}\n"
@@ -155,6 +161,9 @@ def tvweb_config_text(cache_status: str | None = None) -> str:
             "Sentinel searches the local iBOX catalog cache during group messages, "
             "not the website DB directly. Use /refresh_tvweb_cache to replace the "
             "local cache with a fresh pull from the website DB.\n\n"
+            "For release dates and unaired season/episode checks, copy TMDB_BEARER_TOKEN "
+            "from the website .env into Sentinel's VPS .env. Do not use "
+            "TMDB_BACKFILL_TOKENS for the bot runtime.\n\n"
             f"{cache_settings}"
         )
     else:
@@ -169,6 +178,9 @@ def tvweb_config_text(cache_status: str | None = None) -> str:
             "tv_shows table through TVWEB_DATABASE_URL.\n\n"
             "After editing /opt/sentinel-ai-telegram-bot/.env, restart with:\n"
             "docker compose -f compose.vps.yml up -d --build\n\n"
+            "For TMDB release metadata, also copy the website .env value named "
+            "TMDB_BEARER_TOKEN into Sentinel's VPS .env. Do not use "
+            "TMDB_BACKFILL_TOKENS for the bot runtime.\n\n"
             f"{cache_settings}"
         )
     if cache_status:

@@ -85,6 +85,7 @@ OWNER_ADMIN_IDS=762308466
 DEFAULT_NOTIFY_ADMIN_ID=762308466
 HCNSEC_API_KEY=your-provider-key
 TVWEB_DATABASE_URL=paste-the-website-DATABASE_URL-value-here
+TMDB_BEARER_TOKEN=paste-the-website-TMDB_BEARER_TOKEN-value-here
 TUTORIAL_DUMP_CHAT_ID=-1003743973576
 SUPPORT_AI_INTENT_ENABLED=true
 SUPPORT_AI_INTENT_THRESHOLD=0.68
@@ -97,6 +98,8 @@ TVWEB_CACHE_REFRESH_ON_STARTUP=false
 TVWEB_CACHE_REFRESH_INTERVAL_MINUTES=360
 TVWEB_CACHE_REFRESH_TIMES=02:00,08:00,14:00,20:00
 TVWEB_CACHE_REFRESH_LIMIT=5000
+TMDB_METADATA_ENABLED=true
+TMDB_CACHE_TTL_SECONDS=21600
 ```
 
 Generate a secret:
@@ -107,7 +110,7 @@ openssl rand -hex 32
 
 Find your Telegram user ID with a bot such as `@userinfobot`. Find a group ID by adding the bot to the group and checking logs or using a trusted ID helper bot.
 
-For iBOX lookup, copy the website `.env` value named `DATABASE_URL` into Sentinel as `TVWEB_DATABASE_URL`. Do not use the website Mongo or Redis variables for this feature. The bot can remind you through the owner-only private console: press Start in the bot DM, then tap Website DB or Support status.
+For iBOX lookup, copy the website `.env` value named `DATABASE_URL` into Sentinel as `TVWEB_DATABASE_URL`. Do not use the website Mongo or Redis variables for this feature. For release dates and unaired season/episode checks, copy the website `.env` value named `TMDB_BEARER_TOKEN` into Sentinel as `TMDB_BEARER_TOKEN`; do not use `TMDB_BACKFILL_TOKENS` for the bot runtime. The bot can remind you through the owner-only private console: press Start in the bot DM, then tap Website DB or Support status.
 
 `TUTORIAL_DUMP_CHAT_ID=-1003743973576` is the default dump channel. Make the bot an admin in that channel, then forward the tutorial video/document to the bot privately with `/tutorial_save` in the caption.
 
@@ -124,6 +127,8 @@ With `PRIVATE_SUPPORT_ENABLED=true`, normal users can DM the bot for iBOX help a
 Press Start in the bot DM as an owner admin to use the button console. Groups can be authorized, deauthorized, or removed from buttons; open support issues and requests can be marked Fixed or Dismissed. Fixed items leave the open dashboard and send a durable group update tagging the original reporter when possible. Starting a fresh `/start`, `/panel`, support, or training flow cleans up older open bot panels in that same private chat.
 
 Duplicate support reports are merged before they reach the dashboard. Sentinel uses catalog matches, normalized title variants, and the configured AI provider to decide when reports such as "Fix Lioness" and "Lioness link expired" are the same underlying issue.
+
+TMDB is only queried for messages that already look like support requests, issues, or release questions, and responses are cached in memory for `TMDB_CACHE_TTL_SECONDS`. This lets Sentinel answer "not aired yet" instead of logging future episodes as fake broken links.
 
 ## 4. Docker Compose Deployment
 

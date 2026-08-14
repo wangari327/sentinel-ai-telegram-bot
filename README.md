@@ -99,9 +99,11 @@ When `SUPPORT_ENABLED=true`, SentinelAI also watches non-spam group messages for
 
 If `TVWEB_DATABASE_URL` is configured, the bot searches the website `tv_shows` table and can steer users to iBOX TV results. If no match is found, it records the request so you can review demand later from `/panel`. Use a read-only database user for this connection where possible.
 
+If `TMDB_BEARER_TOKEN` is configured, Sentinel checks TMDB before logging release-date and missing-episode style messages. Future movies, unaired seasons, unaired episodes, and unconfirmed seasons get a direct availability reply instead of noisy dashboard tickets. This is especially useful for messages like "Silo season 3 episode 8 missing" when the episode has not aired yet.
+
 Repeated support reports are merged instead of duplicated. Sentinel first checks catalog IDs and normalized title variants, then asks the configured AI provider whether fuzzy reports describe the same underlying show/movie/anime and the same practical issue. The dashboard shows the occurrence count so you can see when a broken link or request is getting noisy.
 
-From the website `.env`, use the value named `DATABASE_URL` and add it to Sentinel as `TVWEB_DATABASE_URL`. Do not use `MONGO_URI_1`, `MONGO_URI_2`, `MONGO_DB_NAME`, `MONGO_COL_NAME`, or `REDIS_URL` for this feature. The private owner command `/tvweb_config` prints this reminder from the bot.
+From the website `.env`, use the value named `DATABASE_URL` and add it to Sentinel as `TVWEB_DATABASE_URL`. Copy `TMDB_BEARER_TOKEN` from the same website env for release metadata. Do not use `MONGO_URI_1`, `MONGO_URI_2`, `MONGO_DB_NAME`, `MONGO_COL_NAME`, `REDIS_URL`, or `TMDB_BACKFILL_TOKENS` for the bot runtime. The private owner command `/tvweb_config` prints this reminder from the bot.
 
 ```env
 SUPPORT_ENABLED=true
@@ -123,6 +125,13 @@ TVWEB_CACHE_REFRESH_ON_STARTUP=false
 TVWEB_CACHE_REFRESH_INTERVAL_MINUTES=360
 TVWEB_CACHE_REFRESH_TIMES=02:00,08:00,14:00,20:00
 TVWEB_CACHE_REFRESH_LIMIT=5000
+TMDB_METADATA_ENABLED=true
+TMDB_BEARER_TOKEN=
+TMDB_BASE_URL=https://api.themoviedb.org/3
+TMDB_LANGUAGE=en-US
+TMDB_REGION=US
+TMDB_TIMEOUT_SECONDS=5
+TMDB_CACHE_TTL_SECONDS=21600
 ```
 
 To save a tutorial, forward the video/document to the bot privately with `/tutorial_save` in the caption. When `TUTORIAL_DUMP_CHAT_ID` is set, Sentinel also copies that tutorial into the dump channel so the media stays easy to audit. When users ask how to download or play files, the bot sends the saved tutorial if available.
@@ -138,6 +147,8 @@ When you mark an issue or request as Fixed from the owner dashboard, Sentinel re
 Support answers are factual first, then AI-polished when `SUPPORT_AI_REPLIES=true` and your configured `AI_PROVIDER` supports chat completions. If the provider fails, the bot falls back to the plain factual reply.
 
 Sentinel does not query the website database for every group message. Group messages search the local `tvweb_catalog_items` cache only. By default, the bot does not refresh that cache on startup; this keeps small VPS instances responsive after deploys. It refreshes at any UTC times listed in `TVWEB_CACHE_REFRESH_TIMES`, then every `TVWEB_CACHE_REFRESH_INTERVAL_MINUTES` after a successful refresh. Use the private owner-console buttons to refresh the catalog or view status; `/refresh_tvweb_cache`, `/tvweb_config`, and `/support_status` remain as fallback commands.
+
+TMDB metadata is fetched only for support messages that look like requests, issues, or release questions, and results are cached in memory for `TMDB_CACHE_TTL_SECONDS`. It does not replace iBOX search; it helps Sentinel decide whether a user is asking for something unavailable, unaired, or genuinely missing from your catalog.
 
 ## AI Providers
 
@@ -387,6 +398,7 @@ OWNER_ADMIN_IDS=762308466
 DEFAULT_NOTIFY_ADMIN_ID=762308466
 HCNSEC_API_KEY=
 TVWEB_DATABASE_URL=
+TMDB_BEARER_TOKEN=
 TUTORIAL_DUMP_CHAT_ID=-1003743973576
 SUPPORT_AI_INTENT_ENABLED=true
 SUPPORT_AI_INTENT_THRESHOLD=0.68
@@ -398,11 +410,13 @@ TVWEB_CACHE_REFRESH_ON_STARTUP=false
 TVWEB_CACHE_REFRESH_INTERVAL_MINUTES=360
 TVWEB_CACHE_REFRESH_TIMES=02:00,08:00,14:00,20:00
 TVWEB_CACHE_REFRESH_LIMIT=5000
+TMDB_METADATA_ENABLED=true
+TMDB_CACHE_TTL_SECONDS=21600
 ```
 
 Do not commit the real `.env`. If an API key or bot token was pasted into chat, logs, or Git history, rotate it with the provider and update only the VPS `.env`.
 
-For the website integration, paste the website `.env` value named `DATABASE_URL` into `TVWEB_DATABASE_URL`. Sentinel normalizes `postgresql://...` to `postgresql+psycopg://...`, so either prefix is fine.
+For the website integration, paste the website `.env` value named `DATABASE_URL` into `TVWEB_DATABASE_URL`. Sentinel normalizes `postgresql://...` to `postgresql+psycopg://...`, so either prefix is fine. For release and season/episode metadata, paste the website `.env` value named `TMDB_BEARER_TOKEN` into Sentinel as `TMDB_BEARER_TOKEN`; do not use `TMDB_BACKFILL_TOKENS`.
 
 The default Docker Postgres volume survives container rebuilds and repo updates. It does not survive a full VPS reinstall unless you restore a backup. For reinstall-proof bot data, use an external Postgres `DATABASE_URL` or schedule off-VPS `pg_dump` backups; MongoDB is not used by the current Sentinel schema.
 

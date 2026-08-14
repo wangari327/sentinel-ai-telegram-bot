@@ -90,6 +90,9 @@ async def health() -> dict[str, Any]:
         "authorized_chat_count": len(settings.authorized_chat_ids),
         "require_authorized_chats": settings.require_authorized_chats,
         "demo_mode": settings.demo_mode,
+        "support_enabled": settings.support_enabled,
+        "tvweb_cache_enabled": settings.tvweb_cache_enabled,
+        "tmdb_metadata_ready": settings.tmdb_metadata_enabled and bool(settings.tmdb_bearer_token),
     }
 
 

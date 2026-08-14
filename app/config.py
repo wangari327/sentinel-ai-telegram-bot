@@ -127,6 +127,13 @@ class Settings:
     tvweb_cache_refresh_interval_minutes: int
     tvweb_cache_refresh_times: tuple[str, ...]
     tvweb_cache_refresh_limit: int
+    tmdb_metadata_enabled: bool
+    tmdb_bearer_token: str
+    tmdb_base_url: str
+    tmdb_language: str
+    tmdb_region: str
+    tmdb_timeout_seconds: float
+    tmdb_cache_ttl_seconds: int
 
     @property
     def webhook_path(self) -> str:
@@ -150,9 +157,7 @@ class Settings:
 def load_settings(env: Mapping[str, str] | None = None) -> Settings:
     source = environ if env is None else env
     default_notify_admin_id = (
-        int(source["DEFAULT_NOTIFY_ADMIN_ID"])
-        if source.get("DEFAULT_NOTIFY_ADMIN_ID")
-        else None
+        int(source["DEFAULT_NOTIFY_ADMIN_ID"]) if source.get("DEFAULT_NOTIFY_ADMIN_ID") else None
     )
     owner_admin_ids = set(_csv_ints(source.get("OWNER_ADMIN_IDS")))
     if default_notify_admin_id:
@@ -183,16 +188,12 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         leave_unauthorized_chats=_bool(source.get("LEAVE_UNAUTHORIZED_CHATS"), False),
         default_group_mode=mode,
         ai_provider=source.get("AI_PROVIDER", "openai").strip().lower(),
-        ai_fallback_provider=source.get("AI_FALLBACK_PROVIDER", "rules_only")
-        .strip()
-        .lower(),
+        ai_fallback_provider=source.get("AI_FALLBACK_PROVIDER", "rules_only").strip().lower(),
         ai_timeout_seconds=_float(source.get("AI_TIMEOUT_SECONDS"), 6.0),
         ai_max_retries=_int(source.get("AI_MAX_RETRIES"), 2),
         ai_use_structured_output=_bool(source.get("AI_USE_STRUCTURED_OUTPUT"), True),
         ai_escalate_on_unsure=_bool(source.get("AI_ESCALATE_ON_UNSURE"), True),
-        ai_enable_provider_fallback=_bool(
-            source.get("AI_ENABLE_PROVIDER_FALLBACK"), True
-        ),
+        ai_enable_provider_fallback=_bool(source.get("AI_ENABLE_PROVIDER_FALLBACK"), True),
         openai_api_key=source.get("OPENAI_API_KEY", ""),
         openai_base_url=source.get("OPENAI_BASE_URL", "https://api.openai.com/v1"),
         openai_model=source.get("OPENAI_MODEL", "gpt-5.5-mini"),
@@ -245,9 +246,7 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         support_enabled=_bool(source.get("SUPPORT_ENABLED"), True),
         support_ai_intent_enabled=_bool(source.get("SUPPORT_AI_INTENT_ENABLED"), True),
         support_ai_intent_threshold=_float(source.get("SUPPORT_AI_INTENT_THRESHOLD"), 0.68),
-        support_ai_intent_max_text_chars=_int(
-            source.get("SUPPORT_AI_INTENT_MAX_TEXT_CHARS"), 700
-        ),
+        support_ai_intent_max_text_chars=_int(source.get("SUPPORT_AI_INTENT_MAX_TEXT_CHARS"), 700),
         private_support_enabled=_bool(source.get("PRIVATE_SUPPORT_ENABLED"), True),
         private_abuse_silence_after=_int(source.get("PRIVATE_ABUSE_SILENCE_AFTER"), 3),
         support_ai_replies=_bool(source.get("SUPPORT_AI_REPLIES"), True),
@@ -262,14 +261,21 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         tvweb_movies_base_url=source.get("TVWEB_MOVIES_BASE_URL", "https://movies.ibox-tv.com"),
         tutorial_dump_chat_id=_optional_int(source.get("TUTORIAL_DUMP_CHAT_ID")),
         tvweb_cache_enabled=_bool(source.get("TVWEB_CACHE_ENABLED"), True),
-        tvweb_cache_refresh_on_startup=_bool(
-            source.get("TVWEB_CACHE_REFRESH_ON_STARTUP"), False
-        ),
+        tvweb_cache_refresh_on_startup=_bool(source.get("TVWEB_CACHE_REFRESH_ON_STARTUP"), False),
         tvweb_cache_refresh_interval_minutes=_int(
             source.get("TVWEB_CACHE_REFRESH_INTERVAL_MINUTES"), 360
         ),
         tvweb_cache_refresh_times=_csv_strings(source.get("TVWEB_CACHE_REFRESH_TIMES")),
         tvweb_cache_refresh_limit=_int(source.get("TVWEB_CACHE_REFRESH_LIMIT"), 5000),
+        tmdb_metadata_enabled=_bool(source.get("TMDB_METADATA_ENABLED"), True),
+        tmdb_bearer_token=(
+            source.get("TMDB_BEARER_TOKEN") or source.get("TMDB_READ_ACCESS_TOKEN") or ""
+        ),
+        tmdb_base_url=source.get("TMDB_BASE_URL", "https://api.themoviedb.org/3"),
+        tmdb_language=source.get("TMDB_LANGUAGE", "en-US"),
+        tmdb_region=source.get("TMDB_REGION", "US"),
+        tmdb_timeout_seconds=_float(source.get("TMDB_TIMEOUT_SECONDS"), 5.0),
+        tmdb_cache_ttl_seconds=_int(source.get("TMDB_CACHE_TTL_SECONDS"), 21600),
     )
 
 

@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import json
 import re
+from dataclasses import replace
 from typing import Any
 
 import httpx
 
 from app.config import Settings
-from app.support.assistant import SupportIntent
+from app.support.assistant import SupportIntent, extract_season_episode_numbers
 from app.support.ibox_search import normalize_title_query
 from app.support.responder import select_support_chat_config
 
@@ -49,7 +50,12 @@ async def classify_support_intent_with_ai(
                 data = _parse_json(_choice_text(response.json()))
                 intent = _intent_from_data(data, settings=settings)
                 if intent:
-                    return intent
+                    season_number, episode_number = extract_season_episode_numbers(text)
+                    return replace(
+                        intent,
+                        season_number=intent.season_number or season_number,
+                        episode_number=intent.episode_number or episode_number,
+                    )
             except (KeyError, TypeError, ValueError, httpx.HTTPError):
                 pass
             if attempt < chat_config.max_retries:
@@ -58,7 +64,8 @@ async def classify_support_intent_with_ai(
                         "role": "user",
                         "content": (
                             "Repair the previous output. Return only valid JSON with "
-                            "kind, confidence, title_query, category_hint, and issue_type."
+                            "kind, confidence, title_query, category_hint, issue_type, "
+                            "season_number, and episode_number."
                         ),
                     }
                 )
@@ -122,7 +129,8 @@ def _messages(text: str) -> list[dict[str, str]]:
                 "Return JSON only. Schema: "
                 '{"kind":"none|request|issue|howto|release","confidence":0.0,'
                 '"title_query":null|string,"category_hint":null|"movie"|"tv"|"anime",'
-                '"issue_type":null|"broken_link"|"missing_episode"|"banned"|"playback"|"general"}. '
+                '"issue_type":null|"broken_link"|"missing_episode"|"banned"|"playback"|"general",'
+                '"season_number":null|number,"episode_number":null|number}. '
                 "Use request for title requests, including bare media titles like "
                 "'Avatar', 'godzilla minus one', or 'requesting Shogun'. "
                 "Use issue for broken/expired links, missing episodes, banned/removed items, "
@@ -135,7 +143,8 @@ def _messages(text: str) -> list[dict[str, str]]:
                 "or incomplete episode-only messages like 'Season 1' without a title. "
                 "or normal conversation not asking for help. "
                 "Extract title_query as the content title only, without filler words like "
-                "'requesting', 'link', 'expired', 'please fix', or 'thanks'."
+                "'requesting', 'link', 'expired', 'please fix', or 'thanks'. Extract "
+                "season_number and episode_number when the user names them."
             ),
         },
         {
@@ -201,20 +210,52 @@ def _intent_from_data(data: dict[str, Any], *, settings: Settings) -> SupportInt
     if issue_type not in ISSUE_TYPES:
         issue_type = None
 
+    season_number = _optional_int(data.get("season_number"))
+    episode_number = _optional_int(data.get("episode_number"))
+
     if kind == "howto":
-        return SupportIntent(kind="howto", title_query=title, category_hint=category_hint)
+        return SupportIntent(
+            kind="howto",
+            title_query=title,
+            category_hint=category_hint,
+            season_number=season_number,
+            episode_number=episode_number,
+        )
     if kind == "request" and title:
-        return SupportIntent(kind="request", title_query=title, category_hint=category_hint)
+        return SupportIntent(
+            kind="request",
+            title_query=title,
+            category_hint=category_hint,
+            season_number=season_number,
+            episode_number=episode_number,
+        )
     if kind == "release" and title:
-        return SupportIntent(kind="release", title_query=title, category_hint=category_hint)
+        return SupportIntent(
+            kind="release",
+            title_query=title,
+            category_hint=category_hint,
+            season_number=season_number,
+            episode_number=episode_number,
+        )
     if kind == "issue":
         return SupportIntent(
             kind="issue",
             title_query=title,
             category_hint=category_hint,
             issue_type=issue_type or "general",
+            season_number=season_number,
+            episode_number=episode_number,
         )
     return None
+
+
+def _optional_int(value: object) -> int | None:
+    if value is None or value == "":
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _merge_candidate_from_data(

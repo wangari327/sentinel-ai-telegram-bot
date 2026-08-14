@@ -76,9 +76,7 @@ def get_or_create_group(
 def get_or_create_group_settings(
     session: Session, group: Group, settings: Settings
 ) -> GroupSettings:
-    group_settings = session.scalar(
-        select(GroupSettings).where(GroupSettings.group_id == group.id)
-    )
+    group_settings = session.scalar(select(GroupSettings).where(GroupSettings.group_id == group.id))
     if group_settings:
         return group_settings
     group_settings = GroupSettings(
@@ -216,9 +214,7 @@ def set_domain_status(
     return record
 
 
-def get_domain_statuses(
-    session: Session, group_id: int, domains: list[str]
-) -> dict[str, str]:
+def get_domain_statuses(session: Session, group_id: int, domains: list[str]) -> dict[str, str]:
     if not domains:
         return {}
     records = session.scalars(
@@ -411,9 +407,7 @@ def record_violation(
     return violation
 
 
-def get_violation_score(
-    session: Session, group_id: int, telegram_user_id: int | None
-) -> float:
+def get_violation_score(session: Session, group_id: int, telegram_user_id: int | None) -> float:
     if telegram_user_id is None:
         return 0.0
     violation = session.scalar(
@@ -500,13 +494,15 @@ def _support_title_key(value: str | None) -> str:
     if not value:
         return ""
     value = value.casefold()
-    value = re.sub(r"\b(?:season|series)\s*\d+\b", " ", value)
-    value = re.sub(r"\bs\s*\d+\b", " ", value)
-    value = re.sub(r"\b(?:episode|ep)\s*\d+(?:\s*[-–]\s*\d+)?\b", " ", value)
-    value = re.sub(r"\be\s*\d+(?:\s*[-–]\s*\d+)?\b", " ", value)
+    value = re.sub(r"\b(?:season|series|s)\s*(\d+)\b", r" season \1 ", value)
+    value = re.sub(
+        r"\b(?:episode|ep|e)\s*(\d+)(?:\s*(?:-|\u2013)\s*\d+)?\b",
+        r" episode \1 ",
+        value,
+    )
     value = re.sub(
         r"\b(?:requesting|request|please|pls|plz|fix|link|links|broken|expired|"
-        r"missing|banned|removed|episode|season|movie|series|show|tv)\b",
+        r"missing|banned|removed|movie|show|tv)\b",
         " ",
         value,
     )
@@ -516,6 +512,42 @@ def _support_title_key(value: str | None) -> str:
 
 def _support_item_title(matched_title: str | None, title_query: str | None) -> str | None:
     return matched_title or title_query
+
+
+def _support_key_has_part(key: str) -> bool:
+    return bool(re.search(r"\b(?:season|episode)\s+\d+\b", key))
+
+
+def _support_base_key(key: str) -> str:
+    key = re.sub(r"\b(?:season|episode)\s+\d+\b", " ", key)
+    return re.sub(r"\s+", " ", key).strip()
+
+
+def _support_key_parts(key: str) -> dict[str, int]:
+    parts: dict[str, int] = {}
+    for label in ("season", "episode"):
+        match = re.search(rf"\b{label}\s+(\d+)\b", key)
+        if match:
+            parts[label] = int(match.group(1))
+    return parts
+
+
+def _support_keys_compatible(incoming_key: str, candidate_key: str) -> bool:
+    if incoming_key == candidate_key:
+        return True
+    if _support_base_key(incoming_key) != _support_base_key(candidate_key):
+        return False
+    incoming_parts = _support_key_parts(incoming_key)
+    candidate_parts = _support_key_parts(candidate_key)
+    if not incoming_parts or not candidate_parts:
+        return True
+    shared_labels = incoming_parts.keys() & candidate_parts.keys()
+    if not shared_labels:
+        return False
+    for label in shared_labels:
+        if incoming_parts[label] != candidate_parts[label]:
+            return False
+    return True
 
 
 def find_support_request_merge_candidate(
@@ -547,7 +579,7 @@ def find_support_request_merge_candidate(
         candidate_key = _support_title_key(
             _support_item_title(candidate.matched_title, candidate.title_query)
         )
-        if candidate_key == incoming_key:
+        if _support_keys_compatible(incoming_key, candidate_key):
             return candidate
     return None
 
@@ -644,7 +676,7 @@ def find_support_issue_merge_candidate(
         candidate_key = _support_title_key(
             _support_item_title(candidate.matched_title, candidate.title_query)
         )
-        if candidate_key == incoming_key:
+        if _support_keys_compatible(incoming_key, candidate_key):
             return candidate
     return None
 
@@ -940,7 +972,9 @@ def forget_group_data(session: Session, group_id: int) -> None:
     event_ids = select(ModerationEvent.id).where(ModerationEvent.group_id == group_id)
     session.execute(delete(PendingReview).where(PendingReview.moderation_event_id.in_(event_ids)))
     if group is not None:
-        session.execute(delete(BotSentMessage).where(BotSentMessage.chat_id == group.telegram_chat_id))
+        session.execute(
+            delete(BotSentMessage).where(BotSentMessage.chat_id == group.telegram_chat_id)
+        )
     for model in (
         SupportIssue,
         SupportRequest,

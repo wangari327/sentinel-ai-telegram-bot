@@ -12,13 +12,23 @@ from app.db import repositories
 from app.moderation.feature_extractor import SenderContext, extract_features
 from app.moderation.normalizer import NormalizedMessage, normalize_telegram_message
 from app.moderation.rules import RuleScore, compute_rule_score
-from app.support.assistant import SupportIntent, build_support_reply, detect_support_intent
-from app.support.ibox_search import search_tvweb_cache
+from app.support.assistant import (
+    SupportIntent,
+    SupportReply,
+    availability_blocks_logging,
+    build_availability_reply,
+    build_support_reply,
+    detect_support_intent,
+    filter_matches_for_requested_part,
+    title_query_with_requested_part,
+)
+from app.support.ibox_search import IboxItem, search_tvweb_cache
 from app.support.intent_ai import (
     choose_support_merge_candidate_with_ai,
     classify_support_intent_with_ai,
 )
 from app.support.responder import render_support_reply
+from app.support.tmdb import resolve_tmdb_availability
 
 PRIVATE_MEDIA_FIELDS = (
     "animation",
@@ -241,6 +251,37 @@ async def handle_private_user_support(
             query=intent.title_query,
             category=intent.category_hint,
         )
+        matches = filter_matches_for_requested_part(matches, intent)
+
+    availability = None
+    if intent.kind in {"release", "request", "issue"} and intent.title_query:
+        availability = await resolve_tmdb_availability(
+            settings=settings,
+            title_query=intent.title_query,
+            category_hint=intent.category_hint,
+            season_number=intent.season_number,
+            episode_number=intent.episode_number,
+        )
+        if availability_blocks_logging(intent, availability):
+            reply = build_availability_reply(
+                intent=intent,
+                matches=matches,
+                settings=settings,
+                availability=availability,
+            )
+            if reply is not None:
+                await _answer_support_reply(
+                    message=message,
+                    session=session,
+                    settings=settings,
+                    intent=intent,
+                    matches=matches,
+                    normalized=normalized,
+                    reply=reply,
+                    tutorial_chat_id=group.telegram_chat_id,
+                )
+                return True
+
     reply_intent = _private_reply_intent(intent, matches)
     occurrence_count = await _record_private_support_intent(
         session=session,
@@ -258,13 +299,38 @@ async def handle_private_user_support(
         matches=matches,
         settings=settings,
         occurrence_count=occurrence_count,
+        availability=availability,
     )
     if reply is None:
         await message.answer(private_user_help_text(), disable_web_page_preview=True)
         return True
+    await _answer_support_reply(
+        message=message,
+        session=session,
+        settings=settings,
+        intent=reply_intent,
+        matches=matches,
+        normalized=normalized,
+        reply=reply,
+        tutorial_chat_id=group.telegram_chat_id,
+    )
+    return True
+
+
+async def _answer_support_reply(
+    *,
+    message: object,
+    session: Session,
+    settings: Settings,
+    intent: SupportIntent,
+    matches: list[IboxItem],
+    normalized: NormalizedMessage,
+    reply: SupportReply,
+    tutorial_chat_id: int,
+) -> None:
     reply_text = await render_support_reply(
         factual_reply=reply,
-        intent=reply_intent,
+        intent=intent,
         matches=matches,
         settings=settings,
         user_text=normalized.text,
@@ -279,11 +345,10 @@ async def handle_private_user_support(
         await send_tutorial_if_available(
             bot=getattr(message, "bot", None),
             session=session,
-            chat_id=group.telegram_chat_id,
+            chat_id=tutorial_chat_id,
             settings=settings,
             cleanup=False,
         )
-    return True
 
 
 async def _handle_private_safety_decision(
@@ -348,6 +413,8 @@ def _private_reply_intent(intent: SupportIntent, matches: list[object]) -> Suppo
             kind="request",
             title_query=intent.title_query,
             category_hint=intent.category_hint,
+            season_number=intent.season_number,
+            episode_number=intent.episode_number,
         )
     return intent
 
@@ -365,6 +432,7 @@ async def _record_private_support_intent(
     settings: Settings,
 ) -> int | None:
     if intent.kind in {"request", "bare_title"} and intent.title_query:
+        record_title_query = title_query_with_requested_part(intent) or intent.title_query
         status = (
             "found" if matches else "open" if settings.tvweb_database_url else "suggested_search"
         )
@@ -384,7 +452,7 @@ async def _record_private_support_intent(
             telegram_chat_id=telegram_chat_id,
             telegram_message_id=telegram_message_id,
             sender_user_id=sender_user_id,
-            title_query=intent.title_query,
+            title_query=record_title_query,
             category_hint=intent.category_hint,
             status=status,
             normalized_text=normalized.text,
@@ -394,6 +462,7 @@ async def _record_private_support_intent(
         )
         return request.occurrence_count
     elif intent.kind == "issue":
+        record_title_query = title_query_with_requested_part(intent)
         issue_type = intent.issue_type or "general"
         merge_issue_id = await _choose_private_issue_merge_id(
             session=session,
@@ -411,7 +480,7 @@ async def _record_private_support_intent(
             telegram_message_id=telegram_message_id,
             sender_user_id=sender_user_id,
             issue_type=issue_type,
-            title_query=intent.title_query,
+            title_query=record_title_query,
             category_hint=intent.category_hint,
             normalized_text=normalized.text,
             matched_show_id=getattr(matches[0], "id", None) if matches else None,
@@ -437,7 +506,7 @@ async def _choose_private_issue_merge_id(
         session,
         group_id=group_id,
         issue_type=issue_type,
-        title_query=intent.title_query,
+        title_query=title_query_with_requested_part(intent),
         category_hint=intent.category_hint,
         matched_show_id=matched_show_id,
         matched_title=matched_title,
@@ -453,7 +522,7 @@ async def _choose_private_issue_merge_id(
     return await choose_support_merge_candidate_with_ai(
         kind="issue",
         text=normalized.text,
-        title_query=intent.title_query,
+        title_query=title_query_with_requested_part(intent),
         issue_type=issue_type,
         candidates=[_issue_merge_candidate(candidate) for candidate in candidates],
         settings=settings,
@@ -476,7 +545,7 @@ async def _choose_private_request_merge_id(
     deterministic = repositories.find_support_request_merge_candidate(
         session,
         group_id=group_id,
-        title_query=intent.title_query,
+        title_query=title_query_with_requested_part(intent) or intent.title_query,
         status=status,
         category_hint=intent.category_hint,
         matched_show_id=matched_show_id,
@@ -493,7 +562,7 @@ async def _choose_private_request_merge_id(
     return await choose_support_merge_candidate_with_ai(
         kind="request",
         text=normalized.text,
-        title_query=intent.title_query,
+        title_query=title_query_with_requested_part(intent) or intent.title_query,
         issue_type=None,
         candidates=[_request_merge_candidate(candidate) for candidate in candidates],
         settings=settings,

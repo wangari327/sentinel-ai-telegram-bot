@@ -93,6 +93,45 @@ def test_support_issue_merges_title_variants_without_match() -> None:
         assert second.occurrence_count == 2
 
 
+def test_support_issue_keeps_different_seasons_separate() -> None:
+    settings = load_settings({})
+    with _session() as session:
+        group = repositories.get_or_create_group(
+            session,
+            telegram_chat_id=-1001,
+            title="Group",
+            chat_type="supergroup",
+            settings=settings,
+        )
+
+        first = repositories.upsert_support_issue(
+            session,
+            group_id=group.id,
+            telegram_chat_id=-1001,
+            telegram_message_id=10,
+            sender_user_id=111,
+            issue_type="broken_link",
+            title_query="Silo season 3",
+            category_hint="tv",
+            normalized_text="Fix Silo season 3",
+        )
+        second = repositories.upsert_support_issue(
+            session,
+            group_id=group.id,
+            telegram_chat_id=-1001,
+            telegram_message_id=11,
+            sender_user_id=222,
+            issue_type="broken_link",
+            title_query="Silo season 4",
+            category_hint="tv",
+            normalized_text="Fix Silo season 4",
+        )
+
+        assert second.id != first.id
+        assert first.occurrence_count == 1
+        assert second.occurrence_count == 1
+
+
 def test_group_authorization_by_id_and_remove() -> None:
     settings = load_settings({})
     with _session() as session:

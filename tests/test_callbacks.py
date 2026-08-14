@@ -47,11 +47,15 @@ def test_owner_console_config_text_points_to_tvweb_database_url() -> None:
 
     assert "DATABASE_URL" in text
     assert "TVWEB_DATABASE_URL" in text
+    assert "TMDB_BEARER_TOKEN" in text
+    assert "TMDB_BACKFILL_TOKENS" in text
     assert "MONGO_URI_1" in text
     assert "<paste" not in text
 
 
-def test_owner_console_config_text_recognizes_configured_tvweb_url(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_owner_console_config_text_recognizes_configured_tvweb_url(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.setattr(
         callbacks,
         "settings",
@@ -59,6 +63,7 @@ def test_owner_console_config_text_recognizes_configured_tvweb_url(monkeypatch: 
             {
                 "TVWEB_DATABASE_URL": "postgresql://user:pass@host/postgres",
                 "TVWEB_CACHE_REFRESH_LIMIT": "5000",
+                "TMDB_BEARER_TOKEN": "tmdb-secret-token",
             }
         ),
     )
@@ -68,6 +73,8 @@ def test_owner_console_config_text_recognizes_configured_tvweb_url(monkeypatch: 
     assert "TVWEB_DATABASE_URL is configured" in text
     assert "PASTE_WEBSITE_DATABASE_URL_HERE" not in text
     assert "Refresh limit: 5000" in text
+    assert "tmdb-secret-token" not in text
+    assert "***configured***" in text or "tmdb-secre...-token" in text
 
 
 def test_owner_console_persistence_text_explains_postgres_storage() -> None:
