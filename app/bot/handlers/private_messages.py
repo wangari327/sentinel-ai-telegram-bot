@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+
 from aiogram import F, Router
 from aiogram.exceptions import TelegramAPIError
 from aiogram.types import Message
@@ -15,6 +17,7 @@ from app.config import settings
 from app.db import repositories
 from app.db.session import session_scope
 from app.moderation.normalizer import normalize_telegram_message
+from app.services.tvweb_cache import refresh_tvweb_catalog_cache
 from app.training.pending import put_pending_training
 
 router = Router(name="private_messages")
@@ -43,6 +46,18 @@ async def on_private_message(message: Message) -> None:
             return
         with session_scope() as session:
             await message.answer(tvweb_config_text(tvweb_cache_status_text(session)))
+        return
+    if text.startswith("/refresh_tvweb_cache"):
+        if not settings.user_is_owner_admin(user_id):
+            await message.answer("Owner-only cache refresh.")
+            return
+        await message.answer("Refreshing iBOX catalog cache now. Small dramatic pause...")
+        count = await asyncio.to_thread(refresh_tvweb_catalog_cache, settings=settings)
+        with session_scope() as session:
+            await message.answer(
+                f"Refresh finished. Cached {count} items.\n\n"
+                f"{tvweb_cache_status_text(session)}"
+            )
         return
     if text.startswith(("/persistence", "/backups")):
         if not settings.user_is_owner_admin(user_id):

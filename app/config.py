@@ -118,6 +118,7 @@ class Settings:
     tvweb_movies_base_url: str
     tutorial_dump_chat_id: int | None
     tvweb_cache_enabled: bool
+    tvweb_cache_refresh_on_startup: bool
     tvweb_cache_refresh_interval_minutes: int
     tvweb_cache_refresh_times: tuple[str, ...]
     tvweb_cache_refresh_limit: int
@@ -249,11 +250,14 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         tvweb_movies_base_url=source.get("TVWEB_MOVIES_BASE_URL", "https://movies.ibox-tv.com"),
         tutorial_dump_chat_id=_optional_int(source.get("TUTORIAL_DUMP_CHAT_ID")),
         tvweb_cache_enabled=_bool(source.get("TVWEB_CACHE_ENABLED"), True),
+        tvweb_cache_refresh_on_startup=_bool(
+            source.get("TVWEB_CACHE_REFRESH_ON_STARTUP"), False
+        ),
         tvweb_cache_refresh_interval_minutes=_int(
             source.get("TVWEB_CACHE_REFRESH_INTERVAL_MINUTES"), 360
         ),
         tvweb_cache_refresh_times=_csv_strings(source.get("TVWEB_CACHE_REFRESH_TIMES")),
-        tvweb_cache_refresh_limit=_int(source.get("TVWEB_CACHE_REFRESH_LIMIT"), 50000),
+        tvweb_cache_refresh_limit=_int(source.get("TVWEB_CACHE_REFRESH_LIMIT"), 5000),
     )
 
 

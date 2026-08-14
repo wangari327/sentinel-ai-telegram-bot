@@ -67,9 +67,10 @@ def test_tvweb_cache_config_defaults() -> None:
     settings = load_settings({})
 
     assert settings.tvweb_cache_enabled
+    assert not settings.tvweb_cache_refresh_on_startup
     assert settings.tvweb_cache_refresh_interval_minutes == 360
     assert settings.tvweb_cache_refresh_times == ()
-    assert settings.tvweb_cache_refresh_limit == 50000
+    assert settings.tvweb_cache_refresh_limit == 5000
 
 
 def test_app_json_is_valid_heroku_button_json() -> None:

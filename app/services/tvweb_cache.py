@@ -34,7 +34,11 @@ def refresh_tvweb_catalog_cache(*, settings: Settings) -> int:
 
 def start_tvweb_cache_loop(*, settings: Settings, poll_seconds: int = 60) -> asyncio.Task[None]:
     async def _loop() -> None:
-        await _refresh_if_due(settings=settings, reason="startup", force_if_empty=True)
+        await _refresh_if_due(
+            settings=settings,
+            reason="startup",
+            force_if_empty=settings.tvweb_cache_refresh_on_startup,
+        )
         last_slot_key: str | None = None
         while True:
             await asyncio.sleep(poll_seconds)
@@ -89,8 +93,6 @@ def _refresh_due(
             interval = timedelta(minutes=settings.tvweb_cache_refresh_interval_minutes)
             if interval.total_seconds() > 0 and now - last_refresh >= interval:
                 return True, last_slot_key
-        elif settings.tvweb_cache_refresh_interval_minutes > 0:
-            return True, last_slot_key
 
     slot_key = _current_slot_key(now, settings.tvweb_cache_refresh_times)
     if slot_key and slot_key != last_slot_key:
