@@ -100,9 +100,28 @@ async def telegram_webhook(secret: str, request: Request) -> dict[str, bool]:
     if bot is None or dispatcher is None:
         raise HTTPException(status_code=503, detail="bot is not configured")
     payload = await request.json()
-    update = Update.model_validate(payload, context={"bot": bot})
-    await dispatcher.feed_update(bot, update)
-    return {"ok": True}
+    handled = await dispatch_telegram_update_safely(
+        payload=payload,
+        bot_instance=bot,
+        dispatcher_instance=dispatcher,
+    )
+    return {"ok": handled}
+
+
+async def dispatch_telegram_update_safely(
+    *,
+    payload: dict[str, Any],
+    bot_instance: Bot,
+    dispatcher_instance: Dispatcher,
+) -> bool:
+    update_id = payload.get("update_id", "unknown")
+    try:
+        update = Update.model_validate(payload, context={"bot": bot_instance})
+        await dispatcher_instance.feed_update(bot_instance, update)
+    except Exception:
+        logger.exception("Telegram update failed and was acknowledged: update_id=%s", update_id)
+        return False
+    return True
 
 
 async def run_polling() -> None:
