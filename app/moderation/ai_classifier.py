@@ -150,6 +150,15 @@ class RulesOnlyProvider(AIProvider):
         if features.get("contains_porn_bait"):
             reasons.append("porn-bait phrase")
             lure_type = "porn_bait"
+        if features.get("contains_adult_spam_cta"):
+            reasons.append("adult spam call-to-action")
+            lure_type = "porn_bait"
+        if features.get("contains_urgency_lure"):
+            reasons.append("urgent watch/expiry lure")
+            lure_type = "porn_bait"
+        if features.get("contains_suspicious_adult_story_lure"):
+            reasons.append("adult clickbait story lure")
+            lure_type = "porn_bait"
         if features.get("contains_crypto_scam"):
             reasons.append("crypto scam phrase")
             lure_type = "crypto_scam"

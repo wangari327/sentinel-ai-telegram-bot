@@ -59,6 +59,8 @@ Use `LEAVE_UNAUTHORIZED_CHATS=true` if you want the bot to leave groups it was a
 - `/examples` - show spam/not-spam example counts.
 - `/trust` - reply to a message to trust a user.
 - `/untrust` - remove a trusted user.
+- `/ban_on` - allow automatic bans for high-confidence high-risk spam.
+- `/ban_off` - disable automatic bans while keeping delete/review behavior.
 - `/allowdomain` - mark a domain safe for the group.
 - `/blockdomain` - mark a domain blocked for the group.
 - `/domains` - list configured domain rules.
@@ -71,6 +73,10 @@ Use `LEAVE_UNAUTHORIZED_CHATS=true` if you want the bot to leave groups it was a
 - `auto_delete`: delete high-confidence spam immediately.
 - `silent`: delete high-confidence spam without admin notifications.
 - `aggressive`: temporarily delete borderline suspicious content pending review.
+
+Automatic bans are controlled separately from mode. Use `/ban_on` only after the bot has ban/restrict permission and you are comfortable with detections. Use `/ban_off` to keep deleting spam without banning users.
+
+Admin notifications are private DM review messages with action buttons. The admin user must start the bot in private chat first, otherwise Telegram may block the DM.
 
 ## AI Providers
 

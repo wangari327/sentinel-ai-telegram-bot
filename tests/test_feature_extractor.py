@@ -10,6 +10,48 @@ def test_porn_bait_obfuscation_detection() -> None:
     assert features.high_risk_link
 
 
+def test_current_adult_bot_campaign_is_high_risk() -> None:
+    normalized = normalize_message_parts(
+        caption=(
+            "The shy maid is taking xXx red heart down "
+            "https://t.me/ojetexxx_bot?startapp=1436"
+        )
+    )
+    features = extract_features(normalized)
+
+    assert features.contains_bot_start_link
+    assert features.contains_porn_bait
+    assert features.contains_adult_spam_cta
+    assert features.contains_suspicious_adult_story_lure
+    assert features.high_risk_link
+
+
+def test_link_expiry_adult_lure_is_high_risk() -> None:
+    normalized = normalize_message_parts(
+        text=(
+            "HIDDEN: GYM GIRL walked out of the shower - I f*cked her brains out. "
+            "Link expires in 60s - Tap to Watch https://t.me/ojetexxx_bot?startapp=1436"
+        )
+    )
+    features = extract_features(normalized)
+
+    assert features.contains_urgency_lure
+    assert features.contains_adult_spam_cta
+    assert features.contains_suspicious_adult_story_lure
+    assert features.high_risk_link
+
+
+def test_short_harmless_reply_is_not_adult_spam() -> None:
+    for text in ("This is good", "Www"):
+        normalized = normalize_message_parts(text=text)
+        features = extract_features(normalized)
+
+        assert not features.contains_porn_bait
+        assert not features.contains_adult_spam_cta
+        assert not features.contains_suspicious_adult_story_lure
+        assert not features.high_risk_link
+
+
 def test_blocked_domain_is_flagged() -> None:
     normalized = normalize_message_parts(text="claim now https://bad.example")
     features = extract_features(normalized, domain_statuses={"bad.example": "blocked"})

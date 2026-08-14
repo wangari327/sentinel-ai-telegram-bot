@@ -2,7 +2,7 @@ from app.moderation.ai_classifier import ClassificationResult
 from app.moderation.feature_extractor import SenderContext, extract_features
 from app.moderation.normalizer import normalize_message_parts
 from app.moderation.rules import compute_rule_score
-from app.moderation.scoring import combine_scores, decide_action
+from app.moderation.scoring import ScoreBreakdown, combine_scores, decide_action
 
 
 def _spam_result(confidence: float = 0.97) -> ClassificationResult:
@@ -51,6 +51,30 @@ def test_setup_incomplete_forces_monitoring() -> None:
     )
 
     assert decision.action == "monitor_setup_required"
+    assert not decision.delete
+    assert not decision.ban
+
+
+def test_monitor_only_reports_without_deleting() -> None:
+    normalized = normalize_message_parts(
+        text=(
+            "HIDDEN: GYM GIRL walked out of the shower - I f*cked her brains out. "
+            "Link expires in 60s - Tap to Watch https://t.me/ojetexxx_bot?startapp=1436"
+        )
+    )
+    features = extract_features(normalized)
+
+    decision = decide_action(
+        score=ScoreBreakdown(final_score=0.98, reasons=["adult clickbait"], safe_reasons=[]),
+        ai_result=_spam_result(),
+        features=features,
+        settings={"mode": "monitor_only", "ban_enabled": True},
+        setup_completed=True,
+    )
+
+    assert decision.action == "monitor"
+    assert decision.notify_admin
+    assert decision.pending_review
     assert not decision.delete
     assert not decision.ban
 

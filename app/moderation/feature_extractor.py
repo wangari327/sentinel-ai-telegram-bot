@@ -77,6 +77,9 @@ class MessageFeatures:
     contains_invite_link: bool
     contains_shortener: bool
     contains_porn_bait: bool
+    contains_adult_spam_cta: bool
+    contains_urgency_lure: bool
+    contains_suspicious_adult_story_lure: bool
     contains_crypto_scam: bool
     contains_fake_reward: bool
     contains_telegram_login_phishing_language: bool
@@ -131,14 +134,103 @@ def extract_features(
         r"free\s+porn",
         r"leaked?\s+(?:video|pics?)",
         r"18\+",
-        r"watch\s+(?:before|b4)\s+(?:deleted|removed)",
+        r"watch\s+(?:before|b4)\s+(?:deleted|removed|takedown|ban)",
         r"private\s+(?:channel|group).*(?:girls|video|leak)",
+        r"(?:hidden\s+cam|private\s+tape|full\s+tape|view\s+full\s+scene|watch\s+uncut)",
         r"sex\s+video",
     ]
     contains_porn_bait = any(re.search(pattern, deobfuscated) for pattern in porn_patterns)
     contains_porn_bait = contains_porn_bait or any(
-        term in compact for term in ("freeporn", "leakedvideo", "18+video", "watchbeforedeleted")
+        term in compact
+        for term in (
+            "freeporn",
+            "leakedvideo",
+            "18+video",
+            "watchbeforedeleted",
+            "watchbeforetakedown",
+            "hiddencam",
+            "privatetape",
+            "viewfullscene",
+            "watchuncut",
+        )
     )
+
+    adult_lure_patterns = [
+        r"\b(?:xxx|nsfw|onlyfans)\b",
+        r"\b(?:hidden\s+cam|private\s+tape|full\s+tape|uncut\s+video|full\s+scene)\b",
+        (
+            r"\b(?:leaked?|caught|spotted|banned|deleted|exclusive|live|hidden)\b.{0,60}"
+            r"\b(?:naked|pussy|dick|f\s*cked|fucked|sex|swallowed|pounded|balls\s+deep)\b"
+        ),
+        (
+            r"\b(?:step\s*sis|stepsis|stepmom|coworker|cousin|babysitter|maid|"
+            r"roommate|gym\s+girl|masseuse|massageuse)\b.{0,90}"
+            r"\b(?:naked|xxx|pussy|dick|f\s*cked|fucked|swallowed|pounded|"
+            r"legs\s+wide|shower)\b"
+        ),
+        (
+            r"\b(?:naked|pussy|dick|f\s*cked|fucked|sex)\b.{0,60}"
+            r"\b(?:video|tape|cam|full|watch|unlock|scene)\b"
+        ),
+    ]
+    adult_lure = any(re.search(pattern, deobfuscated) for pattern in adult_lure_patterns)
+    adult_lure = adult_lure or any(
+        term in compact
+        for term in (
+            "xxx",
+            "onlyfans",
+            "hiddencam",
+            "privatetape",
+            "fulltape",
+            "uncutvideo",
+            "fullscene",
+            "fcked",
+            "pussy",
+            "dick",
+            "stepmom",
+            "stepsis",
+            "gymgirl",
+        )
+    )
+
+    cta_patterns = [
+        (
+            r"\b(?:watch\s+now|see\s+more|view\s+full\s+(?:scene|video)?|"
+            r"tap\s+to\s+watch|tap\s+to\s+play|unlock\s+video|click\s+here)\b"
+        ),
+        r"\b(?:watch|view|unlock|tap|click)\b.{0,35}\b(?:full|video|scene|tape|uncut|here|now)\b",
+        r"\bfull\b",
+    ]
+    cta_count = sum(len(re.findall(pattern, deobfuscated)) for pattern in cta_patterns)
+    contains_adult_spam_cta = adult_lure and (cta_count > 0 or contains_bot_start_link)
+
+    urgency_patterns = [
+        r"\blink\s+expires\s+in\s+\d+\s*(?:s|sec|secs|seconds|m|min|mins|minutes)\b",
+        (
+            r"\b(?:watch|view|tap|click)\b.{0,45}\b(?:before|b4)\b.{0,25}"
+            r"\b(?:takedown|deleted|removed|ban)\b"
+        ),
+        r"\bleaked?\s+(?:just\s+)?\d+\s*(?:s|sec|secs|m|min|mins|minutes)\s+ago\b",
+        r"\blast\s+chance\s+to\s+watch\b",
+        r"\bprivate\s+tape\s+inside\b",
+    ]
+    contains_urgency_lure = any(re.search(pattern, deobfuscated) for pattern in urgency_patterns)
+    contains_urgency_lure = contains_urgency_lure or any(
+        term in compact
+        for term in (
+            "linkexpiresin",
+            "watchbeforetakedown",
+            "watchbeforedeleted",
+            "watchbeforeban",
+            "leakedjust",
+            "lastchancetowatch",
+            "privatetapeinside",
+        )
+    )
+    contains_suspicious_adult_story_lure = adult_lure and (
+        contains_adult_spam_cta or contains_urgency_lure or contains_bot_start_link
+    )
+    contains_porn_bait = contains_porn_bait or contains_suspicious_adult_story_lure
 
     contains_crypto_scam = any(
         phrase in deobfuscated
@@ -198,6 +290,9 @@ def extract_features(
             normalized.domains
             and (
                 contains_porn_bait
+                or contains_adult_spam_cta
+                or contains_urgency_lure
+                or contains_suspicious_adult_story_lure
                 or contains_crypto_scam
                 or contains_fake_reward
                 or contains_login_phishing
@@ -213,6 +308,9 @@ def extract_features(
         contains_invite_link,
         contains_shortener,
         contains_porn_bait,
+        contains_adult_spam_cta,
+        contains_urgency_lure,
+        contains_suspicious_adult_story_lure,
         contains_crypto_scam,
         contains_fake_reward,
         contains_login_phishing,
@@ -235,6 +333,9 @@ def extract_features(
         contains_invite_link=contains_invite_link,
         contains_shortener=contains_shortener,
         contains_porn_bait=contains_porn_bait,
+        contains_adult_spam_cta=contains_adult_spam_cta,
+        contains_urgency_lure=contains_urgency_lure,
+        contains_suspicious_adult_story_lure=contains_suspicious_adult_story_lure,
         contains_crypto_scam=contains_crypto_scam,
         contains_fake_reward=contains_fake_reward,
         contains_telegram_login_phishing_language=contains_login_phishing,

@@ -27,6 +27,9 @@ def compute_rule_score(features: MessageFeatures) -> RuleScore:
         "contains_invite_link": (0.34, "Telegram invite link"),
         "contains_shortener": (0.22, "shortened URL"),
         "contains_porn_bait": (0.44, "porn-bait wording"),
+        "contains_adult_spam_cta": (0.38, "adult spam call-to-action"),
+        "contains_urgency_lure": (0.24, "urgent watch/expiry lure"),
+        "contains_suspicious_adult_story_lure": (0.35, "adult clickbait story lure"),
         "contains_crypto_scam": (0.40, "crypto scam wording"),
         "contains_fake_reward": (0.34, "fake reward wording"),
         "contains_telegram_login_phishing_language": (0.46, "login phishing wording"),
@@ -63,6 +66,12 @@ def compute_rule_score(features: MessageFeatures) -> RuleScore:
     elif features.sender_trusted and features.high_risk_link:
         score -= 0.12
         safe_reasons.append("sender is trusted but message has high-risk indicators")
+
+    if features.contains_suspicious_adult_story_lure and (
+        features.contains_bot_start_link or features.contains_tme_link or features.contains_url
+    ):
+        score = max(score, 0.96)
+        reasons.append("adult clickbait with Telegram/link call-to-action")
 
     if features.high_risk_link and score < 0.72:
         score = max(score, 0.72)

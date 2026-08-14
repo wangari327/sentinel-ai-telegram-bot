@@ -4,8 +4,12 @@ from app.config import load_settings
 from app.moderation.ai_classifier import (
     ClassificationRequest,
     ProviderChain,
+    RulesOnlyProvider,
     parse_classification_json,
 )
+from app.moderation.feature_extractor import extract_features
+from app.moderation.normalizer import normalize_message_parts
+from app.moderation.rules import compute_rule_score
 
 
 def test_ai_json_parsing_valid_response() -> None:
@@ -55,6 +59,33 @@ async def test_provider_chain_falls_back_to_rules_only_without_openai_key() -> N
     assert result.provider_name == "rules_only"
     assert result.label == "spam"
     assert result.error
+
+
+async def test_rules_only_deletes_current_adult_bot_campaign() -> None:
+    normalized = normalize_message_parts(
+        caption=(
+            "The shy maid is taking xXx red heart down "
+            "https://t.me/ojetexxx_bot?startapp=1436"
+        )
+    )
+    features = extract_features(normalized)
+    rule_score = compute_rule_score(features)
+    request = ClassificationRequest(
+        normalized_text=normalized.text,
+        raw_excerpt=normalized.raw_excerpt,
+        urls=normalized.urls,
+        domains=normalized.domains,
+        telegram_links=normalized.telegram_links,
+        rule_features=features.to_dict(),
+        rule_score=rule_score.score,
+    )
+
+    result = await RulesOnlyProvider().classify(request)
+
+    assert rule_score.score >= 0.96
+    assert result.label == "spam"
+    assert result.recommended_action == "delete"
+    assert result.detected_lure_type == "porn_bait"
 
 
 def test_gemini_and_ollama_mock_response_validation() -> None:

@@ -49,7 +49,8 @@ async def start(message: Message) -> None:
 async def help_command(message: Message) -> None:
     await message.answer(
         "Commands: /setup, /status, /mode, /thresholds, /train, /examples, "
-        "/trust, /untrust, /ban, /allowdomain, /blockdomain, /domains, /privacy. "
+        "/trust, /untrust, /ban, /ban_on, /ban_off, /allowdomain, /blockdomain, "
+        "/domains, /privacy. "
         "The bot only moderates authorized chats."
     )
 
@@ -122,6 +123,7 @@ async def status(message: Message) -> None:
         f"Authorized: {authorized}\n"
         f"Setup completed: {group.setup_completed}\n"
         f"Mode: {group_settings.mode}\n"
+        f"Auto-ban enabled: {group_settings.ban_enabled}\n"
         f"Spam examples: {counts['spam']}\n"
         f"Not-spam examples: {counts['not_spam']}"
     )
@@ -333,6 +335,16 @@ async def scan_admins_on(message: Message) -> None:
 @router.message(Command("scan_admins_off"))
 async def scan_admins_off(message: Message) -> None:
     await _set_flags(message, scan_admins=False)
+
+
+@router.message(Command("ban_on"))
+async def ban_on(message: Message) -> None:
+    await _set_flags(message, ban_enabled=True)
+
+
+@router.message(Command("ban_off"))
+async def ban_off(message: Message) -> None:
+    await _set_flags(message, ban_enabled=False)
 
 
 async def _set_flags(message: Message, **updates: object) -> None:
