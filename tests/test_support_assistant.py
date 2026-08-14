@@ -28,12 +28,42 @@ def test_detects_requesting_prefix_cleanly() -> None:
 def test_bare_title_detection_is_opt_in() -> None:
     assert detect_support_intent("Avatar") is None
     assert detect_support_intent("Www", allow_bare_title=True) is None
+    assert detect_support_intent("Season 1", allow_bare_title=True).kind == "clarify"
 
     intent = detect_support_intent("Avatar", allow_bare_title=True)
 
     assert intent is not None
     assert intent.kind == "bare_title"
     assert intent.title_query == "Avatar"
+
+
+def test_season_only_message_asks_for_clarification() -> None:
+    intent = detect_support_intent(
+        "Season 1",
+        allow_bare_title=True,
+        context_title="The Walking Dead: Dead City",
+    )
+
+    assert intent is not None
+    assert intent.kind == "clarify"
+    assert intent.context_title == "The Walking Dead: Dead City"
+
+
+def test_builds_clarification_reply_with_context_button() -> None:
+    settings = load_settings({"TVWEB_SITE_BASE_URL": "https://ibox-tv.com"})
+    intent = detect_support_intent(
+        "Season 1",
+        allow_bare_title=True,
+        context_title="The Walking Dead: Dead City",
+    )
+
+    reply = build_support_reply(intent=intent, matches=[], settings=settings)
+
+    assert reply is not None
+    assert "Do you mean" in reply.text
+    assert "The Walking Dead" in reply.text
+    assert not reply.allow_ai_rewrite
+    assert any(button.text == "Search that" for button in reply.buttons)
 
 
 def test_detects_broken_link_issue() -> None:
@@ -121,8 +151,9 @@ def test_builds_search_reply_for_found_item() -> None:
     reply = build_support_reply(intent=intent, matches=[item], settings=settings)
 
     assert reply is not None
-    assert "Found this" in reply.text
+    assert "Found on iBOX TV" in reply.text
     assert "https://ibox-tv.com/show/shogun-season-1" in reply.text
+    assert any(button.url == "https://ibox-tv.com/show/shogun-season-1" for button in reply.buttons)
     assert item_url(settings, item) == "https://ibox-tv.com/show/shogun-season-1"
 
 
@@ -134,7 +165,7 @@ def test_without_tvweb_db_request_points_to_search_page() -> None:
 
     assert reply is not None
     assert "Search iBOX TV" in reply.text
-    assert "https://ibox-tv.com/?search=Severance" in reply.text
+    assert any(button.url == "https://ibox-tv.com/?search=Severance" for button in reply.buttons)
 
 
 def test_search_url_uses_category_domains() -> None:
@@ -166,7 +197,9 @@ def test_cached_tvweb_lookup_finds_title_without_upstream_query() -> None:
 
         intent = detect_support_intent("requesting Avatar")
         assert intent is not None
-        matches = search_tvweb_cache(session=session, settings=settings, query=intent.title_query or "")
+        matches = search_tvweb_cache(
+            session=session, settings=settings, query=intent.title_query or ""
+        )
 
     assert matches
     assert matches[0].title == "Avatar"

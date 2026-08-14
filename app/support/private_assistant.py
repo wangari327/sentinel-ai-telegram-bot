@@ -5,6 +5,7 @@ from dataclasses import dataclass
 
 from sqlalchemy.orm import Session
 
+from app.bot.keyboards import support_reply_keyboard
 from app.bot.support_actions import send_tutorial_if_available
 from app.config import Settings
 from app.db import repositories
@@ -66,7 +67,7 @@ def private_user_help_text() -> str:
     return (
         "Hey. I can help with iBOX TV requests, search, broken or expired links, "
         "missing episodes, and download/play tutorial questions.\n\n"
-        "Try: \"requesting Avatar\", \"Lioness link expired\", or \"how do I download?\" "
+        'Try: "requesting Avatar", "Lioness link expired", or "how do I download?" '
         "Keep it clean though; spam goes straight to the timeout corner."
     )
 
@@ -268,7 +269,12 @@ async def handle_private_user_support(
         settings=settings,
         user_text=normalized.text,
     )
-    await message.answer(reply_text, disable_web_page_preview=True)
+    await message.answer(
+        reply_text,
+        disable_web_page_preview=True,
+        parse_mode="HTML",
+        reply_markup=support_reply_keyboard(reply.buttons),
+    )
     if reply.should_send_tutorial:
         await send_tutorial_if_available(
             bot=getattr(message, "bot", None),
@@ -359,7 +365,9 @@ async def _record_private_support_intent(
     settings: Settings,
 ) -> int | None:
     if intent.kind in {"request", "bare_title"} and intent.title_query:
-        status = "found" if matches else "open" if settings.tvweb_database_url else "suggested_search"
+        status = (
+            "found" if matches else "open" if settings.tvweb_database_url else "suggested_search"
+        )
         merge_request_id = await _choose_private_request_merge_id(
             session=session,
             settings=settings,

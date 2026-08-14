@@ -93,6 +93,9 @@ async def render_support_reply(
     settings: Settings,
     user_text: str,
 ) -> str:
+    if not factual_reply.allow_ai_rewrite:
+        return factual_reply.text
+
     chat_config = select_support_chat_config(settings)
     if chat_config is None:
         return factual_reply.text
@@ -149,10 +152,7 @@ def _messages(
     settings: Settings,
     user_text: str,
 ) -> list[dict[str, str]]:
-    matched_titles = [
-        f"{item.display_title} ({item.category})"
-        for item in matches[:3]
-    ]
+    matched_titles = [f"{item.display_title} ({item.category})" for item in matches[:3]]
     return [
         {
             "role": "system",
@@ -191,11 +191,7 @@ def _choice_text(data: dict[str, Any]) -> str:
     if isinstance(content, str):
         return content
     if isinstance(content, list):
-        return "\n".join(
-            str(part.get("text", ""))
-            for part in content
-            if isinstance(part, dict)
-        )
+        return "\n".join(str(part.get("text", "")) for part in content if isinstance(part, dict))
     return str(content)
 
 

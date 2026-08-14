@@ -35,6 +35,7 @@ class FakeMessage:
     caption: str | None = None
     entities: list[object] | None = None
     caption_entities: list[object] | None = None
+    reply_to_message: object | None = None
 
 
 @dataclass(slots=True)
@@ -106,6 +107,42 @@ async def test_pipeline_deletes_obvious_no_link_adult_spam() -> None:
     assert event.ai_label == "spam"
 
 
+async def test_pipeline_deletes_hot_instagram_adult_bait_even_without_url() -> None:
+    settings = load_settings(
+        {
+            "AUTHORIZED_CHAT_IDS": "-1001",
+            "DEFAULT_GROUP_MODE": "normal",
+            "AI_PROVIDER": "rules_only",
+            "AI_FALLBACK_PROVIDER": "rules_only",
+            "SUPPORT_ENABLED": "false",
+        }
+    )
+    bot = FakeBot()
+    message = FakeMessage(text="Hot Instagram girl got exposed 🔥 riding cock like crazy")
+
+    with _session() as session:
+        group = repositories.get_or_create_group(
+            session,
+            telegram_chat_id=-1001,
+            title="Series 2022 Requests",
+            chat_type="supergroup",
+            settings=settings,
+        )
+        group.setup_completed = True
+        result = await process_group_message(
+            message=message,
+            bot=bot,
+            session=session,
+            settings=settings,
+            permissions=FakePermissions(),
+            sender_is_admin=False,
+        )
+
+    assert result.decision is not None
+    assert result.decision.action == "delete"
+    assert bot.deleted == [(-1001, 101)]
+
+
 async def test_pipeline_replies_to_clear_title_request_from_cache() -> None:
     settings = load_settings(
         {
@@ -155,5 +192,60 @@ async def test_pipeline_replies_to_clear_title_request_from_cache() -> None:
 
     assert result.support_replied
     assert bot.sent
-    assert "Found this on iBOX TV" in str(bot.sent[0]["text"])
+    assert "Found on iBOX TV" in str(bot.sent[0]["text"])
     assert "Avatar" in str(bot.sent[0]["text"])
+
+
+async def test_pipeline_clarifies_season_only_reply_instead_of_random_search() -> None:
+    settings = load_settings(
+        {
+            "AUTHORIZED_CHAT_IDS": "-1001",
+            "DEFAULT_GROUP_MODE": "normal",
+            "AI_PROVIDER": "rules_only",
+            "AI_FALLBACK_PROVIDER": "rules_only",
+            "SUPPORT_ENABLED": "true",
+            "SUPPORT_AI_REPLIES": "false",
+            "SUPPORT_REPLY_CLEANUP_SECONDS": "0",
+        }
+    )
+    bot = FakeBot()
+    replied_post = FakeMessage(text="The Walking Dead: Dead City Season 3 Episode 1-7 CLICK HERE")
+    message = FakeMessage(text="Season 1", reply_to_message=replied_post)
+
+    with _session() as session:
+        group = repositories.get_or_create_group(
+            session,
+            telegram_chat_id=-1001,
+            title="Series 2022 Requests",
+            chat_type="supergroup",
+            settings=settings,
+        )
+        group.setup_completed = True
+        session.add(
+            TvwebCatalogItem(
+                tvweb_id=88,
+                title="High Desert",
+                title_key="high desert",
+                episode_title="Season 1 Complete",
+                category="tv",
+                slug="high-desert-season-1-complete",
+                year=2023,
+                rating=7.0,
+                download_link=None,
+            )
+        )
+
+        result = await process_group_message(
+            message=message,
+            bot=bot,
+            session=session,
+            settings=settings,
+            permissions=FakePermissions(),
+            sender_is_admin=False,
+        )
+
+    assert result.support_replied
+    assert bot.sent
+    assert "Quick check" in str(bot.sent[0]["text"])
+    assert "The Walking Dead" in str(bot.sent[0]["text"])
+    assert "High Desert" not in str(bot.sent[0]["text"])

@@ -171,7 +171,7 @@ class RulesOnlyProvider(AIProvider):
 
         severe_adult_lure = bool(
             features.get("contains_suspicious_adult_story_lure")
-            and features.get("contains_adult_spam_cta")
+            and (features.get("contains_adult_spam_cta") or features.get("contains_porn_bait"))
         )
         severe_nonlink_spam = bool(
             severe_adult_lure
@@ -405,9 +405,9 @@ class GeminiProvider(AIProvider):
                         {
                             "text": json.dumps(
                                 {
-                                    "system": build_classifier_messages(
-                                        request.prompt_payload()
-                                    )[0]["content"],
+                                    "system": build_classifier_messages(request.prompt_payload())[
+                                        0
+                                    ]["content"],
                                     "request": request.prompt_payload(),
                                     "schema": OUTPUT_SCHEMA,
                                 },

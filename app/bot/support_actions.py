@@ -25,12 +25,14 @@ async def send_ephemeral_message(
     purpose: str = "support_reply",
     parse_mode: str | None = "HTML",
     cleanup: bool = True,
+    reply_markup: InlineKeyboardMarkup | None = None,
 ) -> object | None:
     try:
         sent = await bot.send_message(
             chat_id=chat_id,
             text=text,
             reply_to_message_id=reply_to_message_id,
+            reply_markup=reply_markup,
             parse_mode=parse_mode,
             disable_web_page_preview=True,
         )

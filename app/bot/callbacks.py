@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 
 from app.bot.keyboards import (
     group_management_keyboard,
+    moderation_history_keyboard,
     owner_console_keyboard,
     support_issues_keyboard,
     support_requests_keyboard,
@@ -260,12 +261,24 @@ def _requests_console_text(requests: list[object]) -> str:
     if not requests:
         return "No open content requests."
     return "Open content requests\n" + "\n".join(
-        (
-            f"#{request.id} x{request.occurrence_count}: "
-            f"{_short(_request_title(request), 52)}"
-        )
+        (f"#{request.id} x{request.occurrence_count}: " f"{_short(_request_title(request), 52)}")
         for request in requests
     )
+
+
+def _moderation_history_text(events: list[object], *, prefix: str | None = None) -> str:
+    if not events:
+        body = "No moderation history yet."
+    else:
+        body = "Recent moderation events\n" + "\n".join(
+            (
+                f"#{event.id} {event.action_taken} {event.final_score:.2f}"
+                f"{' reviewed=' + event.review_result if event.review_result else ''}: "
+                f"{_short(event.normalized_text, 52)}"
+            )
+            for event in events
+        )
+    return f"{prefix}\n\n{body}" if prefix else body
 
 
 @router.callback_query(F.data == "public:tutorial")
@@ -286,6 +299,58 @@ async def handle_public_tutorial_callback(callback: CallbackQuery) -> None:
         await _answer(callback, "No tutorial is saved yet.")
         return
     await _answer(callback, "Tutorial sent.")
+
+
+@router.callback_query(F.data.startswith("support:"))
+async def handle_support_callback(callback: CallbackQuery) -> None:
+    action = (callback.data or "").split(":", 1)[1]
+    message = callback.message
+    if action == "tutorial":
+        if message is None:
+            await _answer(callback, "No message context.")
+            return
+        with session_scope() as session:
+            sent = await send_tutorial_if_available(
+                bot=callback.bot,
+                session=session,
+                chat_id=message.chat.id,
+                settings=settings,
+                reply_to_message_id=getattr(message, "message_id", None),
+            )
+        if sent is None:
+            await _answer(callback, "No tutorial is saved yet.")
+            return
+        await _answer(callback, "Tutorial sent.")
+        return
+    if action == "stuck":
+        if message is None:
+            await _answer(callback, "Tell me the title and what failed.")
+            return
+        with session_scope() as session:
+            await send_ephemeral_message(
+                bot=callback.bot,
+                session=session,
+                chat_id=message.chat.id,
+                text=(
+                    "<b>Still stuck?</b>\n"
+                    "Reply with the title plus what failed: <code>broken link</code>, "
+                    "<code>missing episode</code>, <code>banned</code>, or "
+                    "<code>not playing</code>. I will file the right thing."
+                ),
+                settings=settings,
+                reply_to_message_id=getattr(message, "message_id", None),
+            )
+        await _answer(callback, "I asked for the useful bits.")
+        return
+    if action == "solved":
+        await _answer(callback, "Lovely. I will pretend I was calm the whole time.")
+        if message is not None:
+            try:
+                await message.edit_reply_markup(reply_markup=None)
+            except TelegramAPIError:
+                pass
+        return
+    await _answer(callback, "Unknown support action.")
 
 
 @router.callback_query(F.data.startswith("group:"))
@@ -329,6 +394,87 @@ async def handle_group_management_callback(callback: CallbackQuery) -> None:
         except TelegramAPIError:
             pass
     await _answer(callback, "Updated.")
+
+
+@router.callback_query(F.data.startswith("event:"))
+async def handle_moderation_event_callback(callback: CallbackQuery) -> None:
+    if not settings.user_is_owner_admin(_callback_user_id(callback)):
+        await _answer(callback, "Owner console only.")
+        return
+    parts = (callback.data or "").split(":", 2)
+    if len(parts) != 3:
+        await _answer(callback, "Invalid event action.")
+        return
+    _, action, event_id_raw = parts
+    try:
+        event_id = int(event_id_raw)
+    except ValueError:
+        await _answer(callback, "Invalid event ID.")
+        return
+    if action not in {"spam_delete", "not_spam"}:
+        await _answer(callback, "Unknown event action.")
+        return
+
+    deleted = False
+    user_id = _callback_user_id(callback)
+    with session_scope() as session:
+        event = session.get(ModerationEvent, event_id)
+        if event is None:
+            text = "That moderation event is gone."
+            events = repositories.list_recent_moderation_events(session, limit=10)
+            reply_markup = moderation_history_keyboard(events)
+        else:
+            normalized = normalize_message_parts(text=event.normalized_text)
+            label = "spam" if action == "spam_delete" else "not_spam"
+            repositories.save_training_example(
+                session,
+                group_id=event.group_id,
+                label=label,
+                normalized_text=normalized.text,
+                raw_excerpt=normalized.raw_excerpt,
+                text_hash=normalized.text_hash,
+                domains=normalized.domains or event.domains,
+                telegram_links=normalized.telegram_links,
+                features={},
+                source=f"history_{action}",
+                created_by_admin_id=user_id,
+            )
+            event.reviewed_by_admin_id = user_id
+            event.review_result = action
+            if action == "spam_delete":
+                try:
+                    await callback.bot.delete_message(
+                        chat_id=event.telegram_chat_id,
+                        message_id=event.telegram_message_id,
+                    )
+                    deleted = True
+                    event.action_taken = "delete_after_review"
+                    event.action_status = "ok"
+                except TelegramAPIError:
+                    event.action_status = "delete_after_review_failed"
+                if event.sender_user_id is not None:
+                    repositories.record_violation(
+                        session,
+                        group_id=event.group_id,
+                        telegram_user_id=event.sender_user_id,
+                        action="history_spam",
+                        score=max(event.final_score, 0.95),
+                    )
+            prefix = (
+                f"Saved #{event_id} as spam training. Deleted={deleted}."
+                if action == "spam_delete"
+                else f"Saved #{event_id} as good training."
+            )
+            events = repositories.list_recent_moderation_events(session, limit=10)
+            text = _moderation_history_text(events, prefix=prefix)
+            reply_markup = moderation_history_keyboard(events)
+
+    if callback.message:
+        try:
+            await callback.message.edit_text(text, reply_markup=reply_markup, parse_mode=None)
+        except TelegramAPIError:
+            pass
+    await _answer(callback, "Training saved.")
 
 
 @router.callback_query(F.data.startswith("issue:"))
@@ -537,8 +683,7 @@ async def handle_console_callback(callback: CallbackQuery) -> None:
         count = await asyncio.to_thread(refresh_tvweb_catalog_cache, settings=settings)
         with session_scope() as session:
             text = (
-                f"Refresh finished. Cached {count} items.\n\n"
-                f"{tvweb_cache_status_text(session)}"
+                f"Refresh finished. Cached {count} items.\n\n" f"{tvweb_cache_status_text(session)}"
             )
         if callback.message:
             try:
@@ -556,7 +701,9 @@ async def handle_console_callback(callback: CallbackQuery) -> None:
             groups = repositories.list_groups(session)
             open_issues = repositories.count_open_support_issues(session)
             open_requests = repositories.count_open_support_requests(session)
-            events = sum(repositories.count_moderation_events(session, group.id) for group in groups)
+            events = sum(
+                repositories.count_moderation_events(session, group.id) for group in groups
+            )
             text = (
                 "SentinelAI stats\n"
                 f"Groups seen: {len(groups)}\n"
@@ -581,10 +728,8 @@ async def handle_console_callback(callback: CallbackQuery) -> None:
             if not events:
                 text = "No moderation history yet."
             else:
-                text = "Recent moderation events\n" + "\n".join(
-                    f"#{event.id} {event.action_taken} {event.final_score:.2f}: {_short(event.normalized_text, 52)}"
-                    for event in events
-                )
+                text = _moderation_history_text(events)
+                reply_markup = moderation_history_keyboard(events)
         elif action == "tutorial":
             asset = repositories.get_tutorial_asset(session)
             if asset:

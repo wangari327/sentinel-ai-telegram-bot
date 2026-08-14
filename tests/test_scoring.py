@@ -20,6 +20,18 @@ def _spam_result(confidence: float = 0.97) -> ClassificationResult:
     )
 
 
+def _not_spam_result(confidence: float = 0.60) -> ClassificationResult:
+    return ClassificationResult(
+        label="not_spam",
+        confidence=confidence,
+        risk_reasons=[],
+        safe_reasons=["test safe"],
+        detected_lure_type=None,
+        recommended_action="allow",
+        provider_name="mock",
+    )
+
+
 def test_threshold_decision_delete_and_ban() -> None:
     normalized = normalize_message_parts(text="login to continue https://t.me/scambot?start=x")
     features = extract_features(normalized)
@@ -115,6 +127,29 @@ async def test_rules_only_deletes_obvious_adult_lure_without_url() -> None:
     assert score.final_score >= 0.88
     assert decision.action == "delete"
     assert decision.delete
+
+
+def test_explicit_adult_story_rule_overrides_uncertain_safe_ai() -> None:
+    normalized = normalize_message_parts(
+        text="Hot Instagram girl got exposed 🔥 riding cock like crazy"
+    )
+    features = extract_features(normalized)
+    rule_score = compute_rule_score(features)
+    ai_result = _not_spam_result(confidence=0.60)
+    score = combine_scores(rule_score=rule_score, ai_result=ai_result, features=features)
+
+    decision = decide_action(
+        score=score,
+        ai_result=ai_result,
+        features=features,
+        settings={"mode": "normal", "ban_enabled": True},
+        setup_completed=True,
+    )
+
+    assert features.contains_porn_bait
+    assert features.contains_suspicious_adult_story_lure
+    assert score.final_score >= 0.88
+    assert decision.action == "delete"
 
 
 def test_link_only_ai_gate_still_escalates_risky_text_without_url() -> None:

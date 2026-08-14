@@ -118,7 +118,10 @@ def extract_features(
     compact = _compact_letters(text)
     lower = text.casefold()
 
-    contains_tme_link = any("t.me/" in link.lower() or "telegram.me/" in link.lower() for link in normalized.telegram_links)
+    contains_tme_link = any(
+        "t.me/" in link.lower() or "telegram.me/" in link.lower()
+        for link in normalized.telegram_links
+    )
     contains_bot_start_link = any(
         re.search(r"(?:t|telegram)\.me/[a-z0-9_]*bot(?:\?|/)?", link, re.IGNORECASE)
         and re.search(r"(?:start|startapp)=", link, re.IGNORECASE)
@@ -137,6 +140,8 @@ def extract_features(
         r"watch\s+(?:before|b4)\s+(?:deleted|removed|takedown|ban)",
         r"private\s+(?:channel|group).*(?:girls|video|leak)",
         r"(?:hidden\s+cam|private\s+tape|full\s+tape|view\s+full\s+scene|watch\s+uncut)",
+        r"(?:hot\s+)?instagram\s+girl.{0,60}(?:exposed|naked|riding|cock)",
+        r"(?:got\s+exposed|exposed).{0,60}(?:riding|cock|naked|p\s*ssy|pussy|dick)",
         r"sex\s+video",
     ]
     contains_porn_bait = any(re.search(pattern, deobfuscated) for pattern in porn_patterns)
@@ -152,6 +157,9 @@ def extract_features(
             "privatetape",
             "viewfullscene",
             "watchuncut",
+            "instagramgirlgotexposed",
+            "hotinstagramgirl",
+            "ridingcock",
         )
     )
 
@@ -160,18 +168,21 @@ def extract_features(
         r"\b(?:hidden\s+cam|private\s+tape|full\s+tape|uncut\s+video|full\s+scene)\b",
         (
             r"\b(?:leaked?|caught|spotted|banned|deleted|exclusive|live|hidden)\b.{0,60}"
-            r"\b(?:naked|p\s*ssy|pussy|dick|f\s*cked|fucked|sex|swallowed|pounded|balls\s+deep)\b"
+            r"\b(?:naked|p\s*ssy|pussy|dick|cock|f\s*cked|fucked|sex|swallowed|pounded|"
+            r"riding|balls\s+deep)\b"
         ),
         (
             r"\b(?:step\s*sis|stepsis|stepmom|coworker|cousin|babysitter|maid|"
-            r"roommate|gym\s+girl|masseuse|massageuse)\b.{0,90}"
+            r"roommate|gym\s+girl|instagram\s+girl|hot\s+instagram\s+girl|masseuse|massageuse)\b.{0,90}"
             r"\b(?:naked|xxx|p\s*ssy|pussy|dick|f\s*cked|fucked|swallowed|pounded|"
-            r"legs\s+wide|shower)\b"
+            r"riding|cock|legs\s+wide|shower|exposed)\b"
         ),
         (
-            r"\b(?:naked|p\s*ssy|pussy|dick|f\s*cked|fucked|sex)\b.{0,60}"
+            r"\b(?:naked|p\s*ssy|pussy|dick|cock|f\s*cked|fucked|sex)\b.{0,60}"
             r"\b(?:video|tape|cam|full|watch|unlock|scene)\b"
         ),
+        r"\b(?:hot\s+)?instagram\s+girl\b.{0,80}\b(?:got\s+)?exposed\b",
+        r"\briding\s+cock\b",
     ]
     adult_lure = any(re.search(pattern, deobfuscated) for pattern in adult_lure_patterns)
     adult_lure = adult_lure or any(
@@ -187,6 +198,11 @@ def extract_features(
             "fcked",
             "pussy",
             "dick",
+            "cock",
+            "ridingcock",
+            "gotexposed",
+            "instagramgirl",
+            "hotinstagramgirl",
             "stepmom",
             "stepsis",
             "gymgirl",
@@ -228,7 +244,10 @@ def extract_features(
         )
     )
     contains_suspicious_adult_story_lure = adult_lure and (
-        contains_adult_spam_cta or contains_urgency_lure or contains_bot_start_link
+        contains_adult_spam_cta
+        or contains_urgency_lure
+        or contains_bot_start_link
+        or contains_porn_bait
     )
     contains_porn_bait = contains_porn_bait or contains_suspicious_adult_story_lure
 

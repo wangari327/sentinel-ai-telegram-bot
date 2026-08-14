@@ -11,7 +11,7 @@ from app.support.assistant import SupportIntent
 from app.support.ibox_search import normalize_title_query
 from app.support.responder import select_support_chat_config
 
-KINDS = {"none", "request", "issue", "howto"}
+KINDS = {"none", "request", "issue", "howto", "release"}
 CATEGORIES = {"movie", "tv", "anime"}
 ISSUE_TYPES = {"broken_link", "missing_episode", "banned", "playback", "general"}
 
@@ -120,16 +120,19 @@ def _messages(text: str) -> list[dict[str, str]]:
                 "The group is for TV shows, movies, anime, downloads, file-store bots, "
                 "and reports about missing/broken/expired/banned content. "
                 "Return JSON only. Schema: "
-                '{"kind":"none|request|issue|howto","confidence":0.0,'
+                '{"kind":"none|request|issue|howto|release","confidence":0.0,'
                 '"title_query":null|string,"category_hint":null|"movie"|"tv"|"anime",'
                 '"issue_type":null|"broken_link"|"missing_episode"|"banned"|"playback"|"general"}. '
                 "Use request for title requests, including bare media titles like "
                 "'Avatar', 'godzilla minus one', or 'requesting Shogun'. "
                 "Use issue for broken/expired links, missing episodes, banned/removed items, "
                 "playback/download complaints, or requests to fix a title. "
+                "Use release for release-date or future-episode questions such as "
+                "'when is season 2 out' or 'next episode release date'. "
                 "Use howto for asking how to download, play, search, use file-store bots, "
                 "or use the website. Use none for greetings, thanks, admin bot notices, "
                 "mode/status messages, username changes, spam reports from other bots, "
+                "or incomplete episode-only messages like 'Season 1' without a title. "
                 "or normal conversation not asking for help. "
                 "Extract title_query as the content title only, without filler words like "
                 "'requesting', 'link', 'expired', 'please fix', or 'thanks'."
@@ -202,6 +205,8 @@ def _intent_from_data(data: dict[str, Any], *, settings: Settings) -> SupportInt
         return SupportIntent(kind="howto", title_query=title, category_hint=category_hint)
     if kind == "request" and title:
         return SupportIntent(kind="request", title_query=title, category_hint=category_hint)
+    if kind == "release" and title:
+        return SupportIntent(kind="release", title_query=title, category_hint=category_hint)
     if kind == "issue":
         return SupportIntent(
             kind="issue",
@@ -228,7 +233,9 @@ def _merge_candidate_from_data(
         selected = int(candidate_id)
     except (TypeError, ValueError):
         return None
-    valid_ids = {int(candidate["id"]) for candidate in candidates if candidate.get("id") is not None}
+    valid_ids = {
+        int(candidate["id"]) for candidate in candidates if candidate.get("id") is not None
+    }
     return selected if selected in valid_ids else None
 
 
@@ -237,11 +244,7 @@ def _choice_text(data: dict[str, Any]) -> str:
     if isinstance(content, str):
         return content
     if isinstance(content, list):
-        return "\n".join(
-            str(part.get("text", ""))
-            for part in content
-            if isinstance(part, dict)
-        )
+        return "\n".join(str(part.get("text", "")) for part in content if isinstance(part, dict))
     return str(content)
 
 

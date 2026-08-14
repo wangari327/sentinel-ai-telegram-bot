@@ -73,6 +73,10 @@ def compute_rule_score(features: MessageFeatures) -> RuleScore:
         score = max(score, 0.96)
         reasons.append("adult clickbait with Telegram/link call-to-action")
 
+    if features.contains_suspicious_adult_story_lure and features.contains_porn_bait:
+        score = max(score, 0.96)
+        reasons.append("explicit adult clickbait story")
+
     if features.high_risk_link and score < 0.72:
         score = max(score, 0.72)
         reasons.append("high-risk link pattern")

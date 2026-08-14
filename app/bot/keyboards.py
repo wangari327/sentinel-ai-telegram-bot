@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-from app.db.models import Group, SupportIssue, SupportRequest
+from app.db.models import Group, ModerationEvent, SupportIssue, SupportRequest
+from app.support.assistant import SupportButton
 
 
 def review_keyboard(token: str) -> InlineKeyboardMarkup:
@@ -80,10 +81,12 @@ def owner_console_keyboard(
         ],
     ]
     if extra_rows:
-        rows = [*extra_rows, [InlineKeyboardButton(text="Console", callback_data="console:stats")], *rows]
-    return InlineKeyboardMarkup(
-        inline_keyboard=rows
-    )
+        rows = [
+            *extra_rows,
+            [InlineKeyboardButton(text="Console", callback_data="console:stats")],
+            *rows,
+        ]
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def group_management_keyboard(groups: list[Group]) -> InlineKeyboardMarkup:
@@ -92,15 +95,23 @@ def group_management_keyboard(groups: list[Group]) -> InlineKeyboardMarkup:
         if group.authorized:
             rows.append(
                 [
-                    InlineKeyboardButton(text=f"Deauthorize {group.id}", callback_data=f"group:deny:{group.id}"),
-                    InlineKeyboardButton(text=f"Remove {group.id}", callback_data=f"group:remove:{group.id}"),
+                    InlineKeyboardButton(
+                        text=f"Deauthorize {group.id}", callback_data=f"group:deny:{group.id}"
+                    ),
+                    InlineKeyboardButton(
+                        text=f"Remove {group.id}", callback_data=f"group:remove:{group.id}"
+                    ),
                 ]
             )
         else:
             rows.append(
                 [
-                    InlineKeyboardButton(text=f"Authorize {group.id}", callback_data=f"group:allow:{group.id}"),
-                    InlineKeyboardButton(text=f"Remove {group.id}", callback_data=f"group:remove:{group.id}"),
+                    InlineKeyboardButton(
+                        text=f"Authorize {group.id}", callback_data=f"group:allow:{group.id}"
+                    ),
+                    InlineKeyboardButton(
+                        text=f"Remove {group.id}", callback_data=f"group:remove:{group.id}"
+                    ),
                 ]
             )
     return owner_console_keyboard(rows)
@@ -109,8 +120,12 @@ def group_management_keyboard(groups: list[Group]) -> InlineKeyboardMarkup:
 def support_issues_keyboard(issues: list[SupportIssue]) -> InlineKeyboardMarkup:
     rows = [
         [
-            InlineKeyboardButton(text=f"Fixed {issue.id}", callback_data=f"issue:resolve:{issue.id}"),
-            InlineKeyboardButton(text=f"Dismiss {issue.id}", callback_data=f"issue:dismiss:{issue.id}"),
+            InlineKeyboardButton(
+                text=f"Fixed {issue.id}", callback_data=f"issue:resolve:{issue.id}"
+            ),
+            InlineKeyboardButton(
+                text=f"Dismiss {issue.id}", callback_data=f"issue:dismiss:{issue.id}"
+            ),
         ]
         for issue in issues[:8]
     ]
@@ -120,10 +135,51 @@ def support_issues_keyboard(issues: list[SupportIssue]) -> InlineKeyboardMarkup:
 def support_requests_keyboard(requests: list[SupportRequest]) -> InlineKeyboardMarkup:
     rows = [
         [
-            InlineKeyboardButton(text=f"Filled {request.id}", callback_data=f"request:resolve:{request.id}"),
-            InlineKeyboardButton(text=f"Dismiss {request.id}", callback_data=f"request:dismiss:{request.id}"),
+            InlineKeyboardButton(
+                text=f"Filled {request.id}", callback_data=f"request:resolve:{request.id}"
+            ),
+            InlineKeyboardButton(
+                text=f"Dismiss {request.id}", callback_data=f"request:dismiss:{request.id}"
+            ),
         ]
         for request in requests[:8]
+    ]
+    return owner_console_keyboard(rows)
+
+
+def support_reply_keyboard(buttons: tuple[SupportButton, ...]) -> InlineKeyboardMarkup | None:
+    rows: list[list[InlineKeyboardButton]] = []
+    current: list[InlineKeyboardButton] = []
+    for button in buttons:
+        if button.url:
+            current.append(InlineKeyboardButton(text=button.text, url=button.url))
+        elif button.callback_data:
+            current.append(
+                InlineKeyboardButton(text=button.text, callback_data=button.callback_data)
+            )
+        else:
+            continue
+        if len(current) == 2:
+            rows.append(current)
+            current = []
+    if current:
+        rows.append(current)
+    if not rows:
+        return None
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def moderation_history_keyboard(events: list[ModerationEvent]) -> InlineKeyboardMarkup:
+    rows = [
+        [
+            InlineKeyboardButton(
+                text=f"Spam + delete {event.id}", callback_data=f"event:spam_delete:{event.id}"
+            ),
+            InlineKeyboardButton(
+                text=f"Good {event.id}", callback_data=f"event:not_spam:{event.id}"
+            ),
+        ]
+        for event in events[:6]
     ]
     return owner_console_keyboard(rows)
 

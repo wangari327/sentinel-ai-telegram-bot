@@ -60,6 +60,8 @@ def combine_scores(
         and ai_result.label == "spam"
     ):
         score = max(score, 0.90)
+    if features.contains_suspicious_adult_story_lure and features.contains_porn_bait:
+        score = max(score, 0.91)
     if features.sender_trusted and not features.high_risk_link:
         score = min(score, 0.42)
     if features.sender_admin:
@@ -134,7 +136,14 @@ def decide_action(
             reason="score exceeded ban threshold with high-risk link",
         )
 
-    if score.final_score >= delete_threshold and ai_result.label in {"spam", "suspicious"}:
+    explicit_adult_rule_delete = bool(
+        features.contains_suspicious_adult_story_lure
+        and features.contains_porn_bait
+        and score.final_score >= delete_threshold
+    )
+    if score.final_score >= delete_threshold and (
+        ai_result.label in {"spam", "suspicious"} or explicit_adult_rule_delete
+    ):
         return Decision(
             action="delete",
             notify_admin=not silent_enabled,

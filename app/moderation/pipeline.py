@@ -4,6 +4,7 @@ from dataclasses import asdict, dataclass
 
 from sqlalchemy.orm import Session
 
+from app.bot.keyboards import support_reply_keyboard
 from app.bot.support_actions import (
     schedule_cleanup,
     send_ephemeral_message,
@@ -25,7 +26,12 @@ from app.moderation.normalizer import NormalizedMessage, normalize_telegram_mess
 from app.moderation.rules import compute_rule_score
 from app.moderation.scoring import Decision, combine_scores, decide_action
 from app.moderation.similarity import retrieve_examples
-from app.support.assistant import SupportIntent, build_support_reply, detect_support_intent
+from app.support.assistant import (
+    SupportIntent,
+    build_support_reply,
+    detect_support_intent,
+    extract_support_context_title,
+)
 from app.support.ibox_search import search_tvweb_cache
 from app.support.intent_ai import (
     choose_support_merge_candidate_with_ai,
@@ -57,10 +63,8 @@ def should_skip(
         return True
     if sender.is_trusted:
         extreme = any(
-            
-                "t.me/" in link.lower() and ("start=" in link.lower() or "joinchat/" in link.lower())
-                for link in normalized.telegram_links
-            
+            "t.me/" in link.lower() and ("start=" in link.lower() or "joinchat/" in link.lower())
+            for link in normalized.telegram_links
         )
         return not extreme
     return False
@@ -80,7 +84,9 @@ def should_call_ai(*, features: object, group_settings: object) -> bool:
             "contains_telegram_login_phishing_language",
         )
     )
-    if getattr(group_settings, "ai_scan_links_only", True) and not getattr(features, "contains_url", False):
+    if getattr(group_settings, "ai_scan_links_only", True) and not getattr(
+        features, "contains_url", False
+    ):
         return risky_text_without_url
     return getattr(features, "risk_signal_count", 0) > 0
 
@@ -97,7 +103,12 @@ async def maybe_handle_support_message(
 ) -> bool:
     if not settings.support_enabled:
         return False
-    intent = detect_support_intent(normalized.text, allow_bare_title=False)
+    context_title = _message_reply_context_title(message)
+    intent = detect_support_intent(
+        normalized.text,
+        allow_bare_title=False,
+        context_title=context_title,
+    )
     if intent is None:
         intent = await classify_support_intent_with_ai(
             text=normalized.text,
@@ -107,6 +118,7 @@ async def maybe_handle_support_message(
         intent = detect_support_intent(
             normalized.text,
             allow_bare_title=settings.tvweb_cache_enabled,
+            context_title=context_title,
         )
     if intent is None:
         return False
@@ -120,7 +132,9 @@ async def maybe_handle_support_message(
         )
     occurrence_count: int | None = None
     if intent.kind == "request" and intent.title_query:
-        status = "found" if matches else "open" if settings.tvweb_database_url else "suggested_search"
+        status = (
+            "found" if matches else "open" if settings.tvweb_database_url else "suggested_search"
+        )
         merge_request_id = await _choose_request_merge_id(
             session=session,
             settings=settings,
@@ -196,6 +210,7 @@ async def maybe_handle_support_message(
         text=reply_text,
         settings=settings,
         reply_to_message_id=int(getattr(message, "message_id", 0)),
+        reply_markup=support_reply_keyboard(reply.buttons),
     )
     if reply.should_send_tutorial:
         await send_tutorial_if_available(
@@ -207,6 +222,28 @@ async def maybe_handle_support_message(
         )
     schedule_cleanup(bot=bot, delay_seconds=settings.support_reply_cleanup_seconds)
     return True
+
+
+def _message_reply_context_title(message: object) -> str | None:
+    reply = getattr(message, "reply_to_message", None)
+    if reply is None:
+        return None
+    raw_reply = "\n".join(
+        part
+        for part in (
+            getattr(reply, "text", None),
+            getattr(reply, "caption", None),
+        )
+        if part
+    )
+    if raw_reply:
+        title = extract_support_context_title(raw_reply)
+        if title:
+            return title
+    normalized_reply = normalize_telegram_message(reply)
+    if not normalized_reply.text:
+        return None
+    return extract_support_context_title(normalized_reply.text)
 
 
 async def _choose_issue_merge_id(
