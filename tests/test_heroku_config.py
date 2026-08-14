@@ -69,6 +69,8 @@ def test_tvweb_cache_config_defaults() -> None:
     assert settings.support_ai_intent_enabled
     assert settings.support_ai_intent_threshold == 0.68
     assert settings.support_ai_intent_max_text_chars == 700
+    assert settings.private_support_enabled
+    assert settings.private_abuse_silence_after == 3
     assert settings.tvweb_cache_enabled
     assert not settings.tvweb_cache_refresh_on_startup
     assert settings.tvweb_cache_refresh_interval_minutes == 360

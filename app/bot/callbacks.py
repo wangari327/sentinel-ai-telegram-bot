@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 
 from app.bot.keyboards import owner_console_keyboard
 from app.bot.permissions import user_is_chat_admin
+from app.bot.support_actions import send_tutorial_if_available
 from app.config import settings
 from app.db import repositories
 from app.db.models import ModerationEvent
@@ -127,6 +128,9 @@ def tvweb_config_text(cache_status: str | None = None) -> str:
         f"Enabled: {settings.support_ai_intent_enabled}\n"
         f"Threshold: {settings.support_ai_intent_threshold}\n"
         f"Max text chars: {settings.support_ai_intent_max_text_chars}\n\n"
+        "Private support\n"
+        f"Enabled: {settings.private_support_enabled}\n"
+        f"Silence after abuse count: {settings.private_abuse_silence_after}\n\n"
         "Cache settings\n"
         f"Enabled: {settings.tvweb_cache_enabled}\n"
         f"Refresh on startup: {settings.tvweb_cache_refresh_on_startup}\n"
@@ -191,6 +195,26 @@ def persistence_text() -> str:
         "used by Sentinel's current schema; using it would be a storage rewrite, not a "
         "drop-in env change."
     )
+
+
+@router.callback_query(F.data == "public:tutorial")
+async def handle_public_tutorial_callback(callback: CallbackQuery) -> None:
+    message = callback.message
+    if message is None or message.chat.type != "private":
+        await _answer(callback, "Use this in private chat.")
+        return
+    with session_scope() as session:
+        sent = await send_tutorial_if_available(
+            bot=callback.bot,
+            session=session,
+            chat_id=message.chat.id,
+            settings=settings,
+            cleanup=False,
+        )
+    if sent is None:
+        await _answer(callback, "No tutorial is saved yet.")
+        return
+    await _answer(callback, "Tutorial sent.")
 
 
 @router.callback_query(F.data.startswith("review:"))

@@ -89,6 +89,8 @@ TUTORIAL_DUMP_CHAT_ID=-1003743973576
 SUPPORT_AI_INTENT_ENABLED=true
 SUPPORT_AI_INTENT_THRESHOLD=0.68
 SUPPORT_AI_INTENT_MAX_TEXT_CHARS=700
+PRIVATE_SUPPORT_ENABLED=true
+PRIVATE_ABUSE_SILENCE_AFTER=3
 TVWEB_CACHE_ENABLED=true
 TVWEB_CACHE_REFRESH_ON_STARTUP=false
 TVWEB_CACHE_REFRESH_INTERVAL_MINUTES=360
@@ -111,6 +113,8 @@ For iBOX lookup, copy the website `.env` value named `DATABASE_URL` into Sentine
 Sentinel group support lookups search the local iBOX catalog cache only, so normal chat traffic does not hammer the website database. By default, the bot does not refresh that cache on startup; it refreshes at the UTC times in `TVWEB_CACHE_REFRESH_TIMES`, then every `TVWEB_CACHE_REFRESH_INTERVAL_MINUTES` after a successful refresh. Use the private owner-console Refresh catalog and Support status buttons to refresh manually and see cache count, last refresh, and any refresh error.
 
 With `SUPPORT_AI_INTENT_ENABLED=true`, Sentinel lets the configured AI provider decide whether fuzzy group messages are support-worthy instead of relying only on phrase parsing. Lower `SUPPORT_AI_INTENT_THRESHOLD` if it misses too much; raise it if it starts answering ordinary chatter.
+
+With `PRIVATE_SUPPORT_ENABLED=true`, normal users can DM the bot for iBOX help and use Start-button shortcuts. Private spam, abusive messages, explicit bait, malicious code snippets, and unsupported media-only uploads are logged as private moderation events; after `PRIVATE_ABUSE_SILENCE_AFTER` strikes, Sentinel stops replying to that private user.
 
 ## 4. Docker Compose Deployment
 

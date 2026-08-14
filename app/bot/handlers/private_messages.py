@@ -12,12 +12,17 @@ from app.bot.callbacks import (
     tvweb_cache_status_text,
     tvweb_config_text,
 )
-from app.bot.keyboards import owner_console_keyboard, training_label_keyboard
+from app.bot.keyboards import (
+    owner_console_keyboard,
+    public_support_keyboard,
+    training_label_keyboard,
+)
 from app.config import settings
 from app.db import repositories
 from app.db.session import session_scope
 from app.moderation.normalizer import normalize_telegram_message
 from app.services.tvweb_cache import refresh_tvweb_catalog_cache
+from app.support.private_assistant import handle_private_user_support, private_user_help_text
 from app.training.pending import put_pending_training
 
 router = Router(name="private_messages")
@@ -27,14 +32,15 @@ router = Router(name="private_messages")
 async def on_private_message(message: Message) -> None:
     text = message.text or message.caption or ""
     user_id = message.from_user.id if message.from_user else 0
+    is_owner = settings.user_is_owner_admin(user_id)
     if text.startswith(("/panel", "/console")):
-        if not settings.user_is_owner_admin(user_id):
+        if not is_owner:
             await message.answer("Owner console is only available to OWNER_ADMIN_IDS.")
             return
         await message.answer("SentinelAI owner console", reply_markup=owner_console_keyboard())
         return
     if text.startswith("/tvweb_config"):
-        if not settings.user_is_owner_admin(user_id):
+        if not is_owner:
             await message.answer("Owner-only setup note. Tiny velvet rope situation.")
             return
         with session_scope() as session:
@@ -44,7 +50,7 @@ async def on_private_message(message: Message) -> None:
             )
         return
     if text.startswith("/support_status"):
-        if not settings.user_is_owner_admin(user_id):
+        if not is_owner:
             await message.answer("Owner-only support status.")
             return
         with session_scope() as session:
@@ -54,7 +60,7 @@ async def on_private_message(message: Message) -> None:
             )
         return
     if text.startswith("/refresh_tvweb_cache"):
-        if not settings.user_is_owner_admin(user_id):
+        if not is_owner:
             await message.answer("Owner-only cache refresh.")
             return
         await message.answer("Refreshing iBOX catalog cache now. Small dramatic pause...")
@@ -67,13 +73,13 @@ async def on_private_message(message: Message) -> None:
             )
         return
     if text.startswith(("/persistence", "/backups")):
-        if not settings.user_is_owner_admin(user_id):
+        if not is_owner:
             await message.answer("Owner-only storage note.")
             return
         await message.answer(persistence_text(), parse_mode=None)
         return
     if text.startswith(("/authorize", "/deauthorize")):
-        if not settings.user_is_owner_admin(user_id):
+        if not is_owner:
             await message.answer("Only owner admins can change authorized chats.")
             return
         parts = text.split(maxsplit=1)
@@ -96,7 +102,7 @@ async def on_private_message(message: Message) -> None:
         await message.answer(f"Chat {chat_id} authorized={authorized}.")
         return
     if text.startswith("/tutorial_save"):
-        if not settings.user_is_owner_admin(user_id):
+        if not is_owner:
             await message.answer("Only an owner admin can save the tutorial.")
             return
         file_id, file_type = _message_file(message)
@@ -123,6 +129,21 @@ async def on_private_message(message: Message) -> None:
                 )
                 return
         await message.answer("Tutorial saved. I can now send it when users ask how to download/play.")
+        return
+    if not is_owner:
+        if message.text and message.text.startswith("/"):
+            await message.answer(
+                private_user_help_text(),
+                reply_markup=public_support_keyboard(settings),
+                disable_web_page_preview=True,
+            )
+            return
+        with session_scope() as session:
+            await handle_private_user_support(
+                message=message,
+                session=session,
+                settings=settings,
+            )
         return
     if message.text and message.text.startswith("/"):
         return

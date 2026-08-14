@@ -6,12 +6,13 @@ from aiogram.filters import Command
 from aiogram.types import Message
 from sqlalchemy import select
 
-from app.bot.keyboards import mode_keyboard, owner_console_keyboard
+from app.bot.keyboards import mode_keyboard, owner_console_keyboard, public_support_keyboard
 from app.bot.permissions import get_bot_permissions, permissions_warning, user_is_chat_admin
 from app.config import settings
 from app.db import repositories
 from app.db.models import Domain, GroupSettings
 from app.db.session import session_scope
+from app.support.private_assistant import private_user_help_text
 
 router = Router(name="commands")
 MODES = {"normal", "auto_delete", "silent", "monitor_only", "aggressive"}
@@ -53,8 +54,9 @@ async def start(message: Message) -> None:
             )
             return
         await message.answer(
-            "SentinelAI is ready. Add me to an authorized group, promote me to admin, "
-            "then run /setup in the group. Forward messages here to create training examples."
+            private_user_help_text(),
+            reply_markup=public_support_keyboard(settings),
+            disable_web_page_preview=True,
         )
         return
     await setup(message)
@@ -62,6 +64,15 @@ async def start(message: Message) -> None:
 
 @router.message(Command("help"))
 async def help_command(message: Message) -> None:
+    if message.chat.type == "private" and not settings.user_is_owner_admin(
+        message.from_user.id if message.from_user else None
+    ):
+        await message.answer(
+            private_user_help_text(),
+            reply_markup=public_support_keyboard(settings),
+            disable_web_page_preview=True,
+        )
+        return
     await message.answer(
         "Commands: /setup, /status, /mode, /thresholds, /train, /examples, "
         "/trust, /untrust, /ban, /ban_on, /ban_off, /allowdomain, /blockdomain, "
@@ -202,6 +213,15 @@ async def thresholds(message: Message) -> None:
 
 @router.message(Command("train"))
 async def train(message: Message) -> None:
+    if message.chat.type == "private" and not settings.user_is_owner_admin(
+        message.from_user.id if message.from_user else None
+    ):
+        await message.answer(
+            private_user_help_text(),
+            reply_markup=public_support_keyboard(settings),
+            disable_web_page_preview=True,
+        )
+        return
     await message.answer(
         "Forward a suspicious or legitimate message to me privately. I will ask whether "
         "to save it as Spam or Not spam for training."

@@ -77,3 +77,27 @@ def owner_console_keyboard() -> InlineKeyboardMarkup:
             ],
         ]
     )
+
+
+def public_support_keyboard(settings: object) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="Search TV",
+                    url=str(settings.tvweb_site_base_url),
+                ),
+                InlineKeyboardButton(
+                    text="Anime",
+                    url=str(settings.tvweb_anime_base_url),
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    text="Movies",
+                    url=str(settings.tvweb_movies_base_url),
+                ),
+                InlineKeyboardButton(text="Tutorial", callback_data="public:tutorial"),
+            ],
+        ]
+    )

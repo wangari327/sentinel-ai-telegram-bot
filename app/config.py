@@ -112,6 +112,8 @@ class Settings:
     support_ai_intent_enabled: bool
     support_ai_intent_threshold: float
     support_ai_intent_max_text_chars: int
+    private_support_enabled: bool
+    private_abuse_silence_after: int
     support_ai_replies: bool
     support_tone: str
     support_reply_cleanup_seconds: int
@@ -246,6 +248,8 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         support_ai_intent_max_text_chars=_int(
             source.get("SUPPORT_AI_INTENT_MAX_TEXT_CHARS"), 700
         ),
+        private_support_enabled=_bool(source.get("PRIVATE_SUPPORT_ENABLED"), True),
+        private_abuse_silence_after=_int(source.get("PRIVATE_ABUSE_SILENCE_AFTER"), 3),
         support_ai_replies=_bool(source.get("SUPPORT_AI_REPLIES"), True),
         support_tone=source.get(
             "SUPPORT_TONE",

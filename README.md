@@ -104,6 +104,8 @@ SUPPORT_ENABLED=true
 SUPPORT_AI_INTENT_ENABLED=true
 SUPPORT_AI_INTENT_THRESHOLD=0.68
 SUPPORT_AI_INTENT_MAX_TEXT_CHARS=700
+PRIVATE_SUPPORT_ENABLED=true
+PRIVATE_ABUSE_SILENCE_AFTER=3
 SUPPORT_AI_REPLIES=true
 SUPPORT_TONE=playful, lightly sarcastic, chatty, funny, helpful, and never rude
 SUPPORT_REPLY_CLEANUP_SECONDS=180
@@ -122,6 +124,8 @@ TVWEB_CACHE_REFRESH_LIMIT=5000
 To save a tutorial, forward the video/document to the bot privately with `/tutorial_save` in the caption. When `TUTORIAL_DUMP_CHAT_ID` is set, Sentinel also copies that tutorial into the dump channel so the media stays easy to audit. When users ask how to download or play files, the bot sends the saved tutorial if available.
 
 Support intent is AI-assisted when `SUPPORT_AI_INTENT_ENABLED=true`. The rule parser still catches obvious cases quickly, but when wording is fuzzy the AI decides whether the message is a title request, broken/missing/banned/playback issue, tutorial/how-to question, or ordinary chatter. `SUPPORT_AI_INTENT_THRESHOLD` controls how confident the AI must be before Sentinel replies or logs anything.
+
+Private user support is enabled with `PRIVATE_SUPPORT_ENABLED=true`. Normal users who press Start in the bot DM get iBOX support buttons and can ask the same search/request/issue/tutorial questions privately. Private spam, abusive messages, explicit bait, malicious code snippets, and unsupported media-only uploads are logged as private moderation events; after `PRIVATE_ABUSE_SILENCE_AFTER` strikes, Sentinel stops replying to that private user.
 
 Support answers are factual first, then AI-polished when `SUPPORT_AI_REPLIES=true` and your configured `AI_PROVIDER` supports chat completions. If the provider fails, the bot falls back to the plain factual reply.
 
@@ -377,6 +381,8 @@ TUTORIAL_DUMP_CHAT_ID=-1003743973576
 SUPPORT_AI_INTENT_ENABLED=true
 SUPPORT_AI_INTENT_THRESHOLD=0.68
 SUPPORT_AI_INTENT_MAX_TEXT_CHARS=700
+PRIVATE_SUPPORT_ENABLED=true
+PRIVATE_ABUSE_SILENCE_AFTER=3
 TVWEB_CACHE_ENABLED=true
 TVWEB_CACHE_REFRESH_ON_STARTUP=false
 TVWEB_CACHE_REFRESH_INTERVAL_MINUTES=360

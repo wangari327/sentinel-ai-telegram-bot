@@ -51,6 +51,7 @@ async def send_tutorial_if_available(
     chat_id: int,
     settings: Settings,
     reply_to_message_id: int | None = None,
+    cleanup: bool = True,
 ) -> object | None:
     asset = repositories.get_tutorial_asset(session)
     if asset is None:
@@ -79,7 +80,7 @@ async def send_tutorial_if_available(
         purpose="tutorial_reply",
         delete_after=(
             datetime.now(tz=UTC) + timedelta(seconds=settings.support_reply_cleanup_seconds)
-            if settings.support_reply_cleanup_seconds > 0
+            if cleanup and settings.support_reply_cleanup_seconds > 0
             else None
         ),
     )
