@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import base64
 import hashlib
 import hmac
@@ -20,6 +21,7 @@ from app.db import repositories
 from app.db.models import ModerationEvent
 from app.db.session import session_scope
 from app.moderation.normalizer import normalize_message_parts
+from app.services.tvweb_cache import refresh_tvweb_catalog_cache
 from app.training.pending import consume_pending_training
 
 router = Router(name="callbacks")
@@ -121,6 +123,10 @@ def _masked(value: str | None) -> str:
 def tvweb_config_text(cache_status: str | None = None) -> str:
     status = _masked(settings.tvweb_database_url)
     cache_settings = (
+        "AI support intent\n"
+        f"Enabled: {settings.support_ai_intent_enabled}\n"
+        f"Threshold: {settings.support_ai_intent_threshold}\n"
+        f"Max text chars: {settings.support_ai_intent_max_text_chars}\n\n"
         "Cache settings\n"
         f"Enabled: {settings.tvweb_cache_enabled}\n"
         f"Refresh on startup: {settings.tvweb_cache_refresh_on_startup}\n"
@@ -273,6 +279,24 @@ async def handle_console_callback(callback: CallbackQuery) -> None:
         await _answer(callback, "Owner console only.")
         return
     action = (callback.data or "").split(":", 1)[1]
+    if action == "refresh_tvweb":
+        await _answer(callback, "Refreshing catalog...")
+        count = await asyncio.to_thread(refresh_tvweb_catalog_cache, settings=settings)
+        with session_scope() as session:
+            text = (
+                f"Refresh finished. Cached {count} items.\n\n"
+                f"{tvweb_cache_status_text(session)}"
+            )
+        if callback.message:
+            try:
+                await callback.message.edit_text(
+                    text,
+                    reply_markup=owner_console_keyboard(),
+                    parse_mode=None,
+                )
+            except TelegramAPIError:
+                pass
+        return
     with session_scope() as session:
         if action == "stats":
             groups = repositories.list_groups(session)
@@ -329,7 +353,7 @@ async def handle_console_callback(callback: CallbackQuery) -> None:
                 text = f"Tutorial saved as {asset.file_type}. Forward a new video with /tutorial_save to replace it."
             else:
                 text = "No tutorial saved yet. Forward the tutorial video here with /tutorial_save in the caption."
-        elif action == "tvweb":
+        elif action in {"tvweb", "support_status"}:
             text = tvweb_config_text(tvweb_cache_status_text(session))
         elif action == "persistence":
             text = persistence_text()

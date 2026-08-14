@@ -86,6 +86,9 @@ DEFAULT_NOTIFY_ADMIN_ID=762308466
 HCNSEC_API_KEY=your-provider-key
 TVWEB_DATABASE_URL=paste-the-website-DATABASE_URL-value-here
 TUTORIAL_DUMP_CHAT_ID=-1003743973576
+SUPPORT_AI_INTENT_ENABLED=true
+SUPPORT_AI_INTENT_THRESHOLD=0.68
+SUPPORT_AI_INTENT_MAX_TEXT_CHARS=700
 TVWEB_CACHE_ENABLED=true
 TVWEB_CACHE_REFRESH_ON_STARTUP=false
 TVWEB_CACHE_REFRESH_INTERVAL_MINUTES=360
@@ -101,11 +104,13 @@ openssl rand -hex 32
 
 Find your Telegram user ID with a bot such as `@userinfobot`. Find a group ID by adding the bot to the group and checking logs or using a trusted ID helper bot.
 
-For iBOX lookup, copy the website `.env` value named `DATABASE_URL` into Sentinel as `TVWEB_DATABASE_URL`. Do not use the website Mongo or Redis variables for this feature. The bot can remind you through the owner-only private command `/tvweb_config`.
+For iBOX lookup, copy the website `.env` value named `DATABASE_URL` into Sentinel as `TVWEB_DATABASE_URL`. Do not use the website Mongo or Redis variables for this feature. The bot can remind you through the owner-only private console: press Start in the bot DM, then tap Website DB or Support status.
 
 `TUTORIAL_DUMP_CHAT_ID=-1003743973576` is the default dump channel. Make the bot an admin in that channel, then forward the tutorial video/document to the bot privately with `/tutorial_save` in the caption.
 
-Sentinel group support lookups search the local iBOX catalog cache only, so normal chat traffic does not hammer the website database. By default, the bot does not refresh that cache on startup; it refreshes at the UTC times in `TVWEB_CACHE_REFRESH_TIMES`, then every `TVWEB_CACHE_REFRESH_INTERVAL_MINUTES` after a successful refresh. DM `/refresh_tvweb_cache` to refresh manually and `/support_status` to see cache count, last refresh, and any refresh error.
+Sentinel group support lookups search the local iBOX catalog cache only, so normal chat traffic does not hammer the website database. By default, the bot does not refresh that cache on startup; it refreshes at the UTC times in `TVWEB_CACHE_REFRESH_TIMES`, then every `TVWEB_CACHE_REFRESH_INTERVAL_MINUTES` after a successful refresh. Use the private owner-console Refresh catalog and Support status buttons to refresh manually and see cache count, last refresh, and any refresh error.
+
+With `SUPPORT_AI_INTENT_ENABLED=true`, Sentinel lets the configured AI provider decide whether fuzzy group messages are support-worthy instead of relying only on phrase parsing. Lower `SUPPORT_AI_INTENT_THRESHOLD` if it misses too much; raise it if it starts answering ordinary chatter.
 
 ## 4. Docker Compose Deployment
 

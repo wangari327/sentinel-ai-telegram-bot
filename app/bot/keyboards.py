@@ -69,6 +69,10 @@ def owner_console_keyboard() -> InlineKeyboardMarkup:
             ],
             [
                 InlineKeyboardButton(text="Website DB", callback_data="console:tvweb"),
+                InlineKeyboardButton(text="Support status", callback_data="console:support_status"),
+            ],
+            [
+                InlineKeyboardButton(text="Refresh catalog", callback_data="console:refresh_tvweb"),
                 InlineKeyboardButton(text="Backups", callback_data="console:persistence"),
             ],
         ]

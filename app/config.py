@@ -109,6 +109,9 @@ class Settings:
     ai_scan_all_messages: bool
     ai_scan_links_only: bool
     support_enabled: bool
+    support_ai_intent_enabled: bool
+    support_ai_intent_threshold: float
+    support_ai_intent_max_text_chars: int
     support_ai_replies: bool
     support_tone: str
     support_reply_cleanup_seconds: int
@@ -238,6 +241,11 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         ai_scan_all_messages=_bool(source.get("AI_SCAN_ALL_MESSAGES"), False),
         ai_scan_links_only=_bool(source.get("AI_SCAN_LINKS_ONLY"), True),
         support_enabled=_bool(source.get("SUPPORT_ENABLED"), True),
+        support_ai_intent_enabled=_bool(source.get("SUPPORT_AI_INTENT_ENABLED"), True),
+        support_ai_intent_threshold=_float(source.get("SUPPORT_AI_INTENT_THRESHOLD"), 0.68),
+        support_ai_intent_max_text_chars=_int(
+            source.get("SUPPORT_AI_INTENT_MAX_TEXT_CHARS"), 700
+        ),
         support_ai_replies=_bool(source.get("SUPPORT_AI_REPLIES"), True),
         support_tone=source.get(
             "SUPPORT_TONE",

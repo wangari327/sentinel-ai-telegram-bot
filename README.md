@@ -67,9 +67,10 @@ Use `LEAVE_UNAUTHORIZED_CHATS=true` if you want the bot to leave groups it was a
 - `/domains` - list configured domain rules.
 - `/privacy` - explain stored data and retention.
 
-Private owner commands:
+Private owner controls:
 
-- `/panel` - open the button console for stats, groups, support issues, requests, history, and tutorial status.
+- Press Start in the bot DM, or send `/start`, to open the button console for stats, groups, support issues, requests, history, tutorial status, website DB status, cache refresh, and backups.
+- `/panel` - reopen the same button console if the message gets buried.
 - `/authorize <chat_id>` - authorize a chat from private DM.
 - `/deauthorize <chat_id>` - remove DB authorization for a chat.
 - `/tutorial_save` - save a forwarded video/document as the default support tutorial.
@@ -100,6 +101,9 @@ From the website `.env`, use the value named `DATABASE_URL` and add it to Sentin
 
 ```env
 SUPPORT_ENABLED=true
+SUPPORT_AI_INTENT_ENABLED=true
+SUPPORT_AI_INTENT_THRESHOLD=0.68
+SUPPORT_AI_INTENT_MAX_TEXT_CHARS=700
 SUPPORT_AI_REPLIES=true
 SUPPORT_TONE=playful, lightly sarcastic, chatty, funny, helpful, and never rude
 SUPPORT_REPLY_CLEANUP_SECONDS=180
@@ -117,9 +121,11 @@ TVWEB_CACHE_REFRESH_LIMIT=5000
 
 To save a tutorial, forward the video/document to the bot privately with `/tutorial_save` in the caption. When `TUTORIAL_DUMP_CHAT_ID` is set, Sentinel also copies that tutorial into the dump channel so the media stays easy to audit. When users ask how to download or play files, the bot sends the saved tutorial if available.
 
+Support intent is AI-assisted when `SUPPORT_AI_INTENT_ENABLED=true`. The rule parser still catches obvious cases quickly, but when wording is fuzzy the AI decides whether the message is a title request, broken/missing/banned/playback issue, tutorial/how-to question, or ordinary chatter. `SUPPORT_AI_INTENT_THRESHOLD` controls how confident the AI must be before Sentinel replies or logs anything.
+
 Support answers are factual first, then AI-polished when `SUPPORT_AI_REPLIES=true` and your configured `AI_PROVIDER` supports chat completions. If the provider fails, the bot falls back to the plain factual reply.
 
-Sentinel does not query the website database for every group message. Group messages search the local `tvweb_catalog_items` cache only. By default, the bot does not refresh that cache on startup; this keeps small VPS instances responsive after deploys. It refreshes at any UTC times listed in `TVWEB_CACHE_REFRESH_TIMES`, then every `TVWEB_CACHE_REFRESH_INTERVAL_MINUTES` after a successful refresh. DM `/refresh_tvweb_cache` when you want to populate it immediately, and DM `/tvweb_config` or `/support_status` to see the cache count, last refresh, and last refresh error.
+Sentinel does not query the website database for every group message. Group messages search the local `tvweb_catalog_items` cache only. By default, the bot does not refresh that cache on startup; this keeps small VPS instances responsive after deploys. It refreshes at any UTC times listed in `TVWEB_CACHE_REFRESH_TIMES`, then every `TVWEB_CACHE_REFRESH_INTERVAL_MINUTES` after a successful refresh. Use the private owner-console buttons to refresh the catalog or view status; `/refresh_tvweb_cache`, `/tvweb_config`, and `/support_status` remain as fallback commands.
 
 ## AI Providers
 
@@ -368,6 +374,9 @@ DEFAULT_NOTIFY_ADMIN_ID=762308466
 HCNSEC_API_KEY=
 TVWEB_DATABASE_URL=
 TUTORIAL_DUMP_CHAT_ID=-1003743973576
+SUPPORT_AI_INTENT_ENABLED=true
+SUPPORT_AI_INTENT_THRESHOLD=0.68
+SUPPORT_AI_INTENT_MAX_TEXT_CHARS=700
 TVWEB_CACHE_ENABLED=true
 TVWEB_CACHE_REFRESH_ON_STARTUP=false
 TVWEB_CACHE_REFRESH_INTERVAL_MINUTES=360

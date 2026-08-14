@@ -6,7 +6,7 @@ from aiogram.filters import Command
 from aiogram.types import Message
 from sqlalchemy import select
 
-from app.bot.keyboards import mode_keyboard
+from app.bot.keyboards import mode_keyboard, owner_console_keyboard
 from app.bot.permissions import get_bot_permissions, permissions_warning, user_is_chat_admin
 from app.config import settings
 from app.db import repositories
@@ -46,6 +46,12 @@ async def _require_admin(message: Message) -> bool:
 @router.message(Command("start"))
 async def start(message: Message) -> None:
     if message.chat.type == "private":
+        if settings.user_is_owner_admin(message.from_user.id if message.from_user else None):
+            await message.answer(
+                "SentinelAI owner console. No slash-command treasure hunt required.",
+                reply_markup=owner_console_keyboard(),
+            )
+            return
         await message.answer(
             "SentinelAI is ready. Add me to an authorized group, promote me to admin, "
             "then run /setup in the group. Forward messages here to create training examples."

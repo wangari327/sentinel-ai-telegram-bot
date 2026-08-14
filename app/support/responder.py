@@ -24,8 +24,12 @@ class SupportChatConfig:
     max_retries: int
 
 
-def select_support_chat_config(settings: Settings) -> SupportChatConfig | None:
-    if not settings.support_ai_replies:
+def select_support_chat_config(
+    settings: Settings,
+    *,
+    require_ai_replies: bool = True,
+) -> SupportChatConfig | None:
+    if require_ai_replies and not settings.support_ai_replies:
         return None
 
     provider = settings.ai_provider
