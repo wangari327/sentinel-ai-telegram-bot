@@ -156,6 +156,7 @@ STOP_PREFIXES = (
     "when is",
     "when will",
 )
+POLITE_SUFFIXES = ("please", "pls", "plz", "thanks", "thank you")
 
 
 @dataclass(frozen=True, slots=True)
@@ -339,7 +340,7 @@ def extract_support_context_title(text: str) -> str | None:
         value,
         flags=re.IGNORECASE,
     )
-    value = normalize_title_query(value)
+    value = _strip_polite_suffixes(normalize_title_query(value))
     if len(value) < 2:
         return None
     if value.casefold() in TITLE_QUERY_BLOCKLIST:
@@ -426,7 +427,7 @@ def _extract_title_query(text: str) -> str | None:
         value,
         flags=re.IGNORECASE,
     )
-    value = normalize_title_query(value)
+    value = _strip_polite_suffixes(normalize_title_query(value))
     lower = value.casefold()
     changed = True
     while changed:
@@ -443,14 +444,14 @@ def _extract_title_query(text: str) -> str | None:
         value,
         flags=re.IGNORECASE,
     )
-    value = normalize_title_query(value)
+    value = _strip_polite_suffixes(normalize_title_query(value))
     value = re.sub(
         r"\b(?:movie|film|anime|series|season|episode|tv\s+show|show)\b",
         " ",
         value,
         flags=re.IGNORECASE,
     )
-    value = normalize_title_query(value)
+    value = _strip_polite_suffixes(normalize_title_query(value))
     value = re.sub(r"^(?:the|a|an)\s+", "", value, flags=re.IGNORECASE)
     value = normalize_title_query(value)
     if len(value) < 2:
@@ -463,7 +464,7 @@ def _extract_title_query(text: str) -> str | None:
 def _extract_bare_title_query(text: str) -> str | None:
     if re.search(r"https?://|www\.|@\w+|[/#]", text, flags=re.IGNORECASE):
         return None
-    value = normalize_title_query(text.strip(" ?!.,:;\"'()[]{}"))
+    value = _strip_polite_suffixes(normalize_title_query(text.strip(" ?!.,:;\"'()[]{}")))
     lower = value.casefold()
     if lower in BARE_TITLE_BLOCKLIST:
         return None
@@ -496,6 +497,23 @@ def _valid_bare_title_candidate(value: str, *, allow_short: bool = False) -> boo
     return any(char.isalnum() for char in value)
 
 
+def _strip_polite_suffixes(value: str) -> str:
+    changed = True
+    while changed:
+        changed = False
+        for suffix in POLITE_SUFFIXES:
+            next_value = re.sub(
+                rf"\s+{re.escape(suffix)}$",
+                "",
+                value,
+                flags=re.IGNORECASE,
+            ).strip(" .:-")
+            if next_value != value:
+                value = next_value
+                changed = True
+    return value
+
+
 def _bare_title_kind(
     *,
     text: str,
@@ -509,6 +527,8 @@ def _bare_title_kind(
     if category_hint:
         return "request"
     if re.search(r"\b(?:19|20)\d{2}\b", title_query):
+        return "request"
+    if re.search(r"\b(?:please|pls|plz)\b", text, re.IGNORECASE):
         return "request"
     if re.search(r"\b(?:movie|film|series|anime|tv\s+show|show)\b", text, re.IGNORECASE):
         return "request"
@@ -826,7 +846,7 @@ def build_support_reply(
     if intent.kind in {"request", "bare_title"}:
         if matches:
             query = escape(intent.title_query or "your search")
-            lines = ["<b>Found on iBOX TV</b>", f"<blockquote>{query}</blockquote>"]
+            lines = ["<b>Found on ibox-tv.com</b>", f"<blockquote>{query}</blockquote>"]
             buttons: list[SupportButton] = []
             for index, item in enumerate(matches[:3], start=1):
                 url = item_url(settings, item)

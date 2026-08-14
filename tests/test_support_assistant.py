@@ -88,6 +88,14 @@ def test_bare_title_with_year_is_treated_as_request() -> None:
     assert intent.title_query == "scam 2004"
 
 
+def test_bare_title_with_polite_suffix_is_clean_request() -> None:
+    intent = detect_support_intent("grays anatomy plz", allow_bare_title=True)
+
+    assert intent is not None
+    assert intent.kind == "request"
+    assert intent.title_query == "grays anatomy"
+
+
 def test_builds_clarification_reply_with_context_button() -> None:
     settings = load_settings({"TVWEB_SITE_BASE_URL": "https://ibox-tv.com"})
     intent = detect_support_intent(
@@ -208,7 +216,7 @@ def test_builds_search_reply_for_found_item() -> None:
     reply = build_support_reply(intent=intent, matches=[item], settings=settings)
 
     assert reply is not None
-    assert "Found on iBOX TV" in reply.text
+    assert "Found on ibox-tv.com" in reply.text
     assert "https://ibox-tv.com/show/shogun-season-1" in reply.text
     assert any(button.url == "https://ibox-tv.com/show/shogun-season-1" for button in reply.buttons)
     assert item_url(settings, item) == "https://ibox-tv.com/show/shogun-season-1"
@@ -405,6 +413,38 @@ def test_cached_tvweb_lookup_matches_short_acronym_punctuation() -> None:
 
     assert matches
     assert matches[0].title == "E.R."
+
+
+def test_cached_tvweb_lookup_fuzzes_common_title_typo_after_polite_suffix_strip() -> None:
+    engine = create_engine("sqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+    settings = load_settings({})
+    with Session(engine) as session:
+        session.add(
+            TvwebCatalogItem(
+                tvweb_id=1,
+                title="Grey's Anatomy",
+                title_key="grey's anatomy",
+                episode_title="Season 1",
+                category="tv",
+                slug="greys-anatomy-season-1",
+                year=2005,
+                rating=7.6,
+                download_link=None,
+            )
+        )
+        session.commit()
+
+        intent = detect_support_intent("grays anatomy plz", allow_bare_title=True)
+        assert intent is not None
+        matches = search_tvweb_cache(
+            session=session,
+            settings=settings,
+            query=intent.title_query or "",
+        )
+
+    assert matches
+    assert matches[0].title == "Grey's Anatomy"
 
 
 def test_support_responder_selects_hcnsec_chat_config() -> None:
