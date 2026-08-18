@@ -69,7 +69,12 @@ def should_skip(
         return True
     if sender.is_trusted:
         extreme = any(
-            "t.me/" in link.lower() and ("start=" in link.lower() or "joinchat/" in link.lower())
+            ("t.me/" in link.lower() or "telegram.me/" in link.lower())
+            and (
+                "start=" in link.lower()
+                or "startapp=" in link.lower()
+                or "joinchat/" in link.lower()
+            )
             for link in normalized.telegram_links
         )
         return not extreme

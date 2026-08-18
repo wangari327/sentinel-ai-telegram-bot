@@ -171,3 +171,14 @@ def test_trusted_user_skip_behavior() -> None:
     sender = SenderContext(is_trusted=True)
 
     assert should_skip(normalized=normalized, sender=sender, scan_admins=False)
+
+
+def test_trusted_user_startapp_bot_link_is_not_skipped() -> None:
+    from app.moderation.pipeline import should_skip
+
+    normalized = normalize_message_parts(
+        text="Watch HOT xXXx Here https://t.me/yofurswetzdreabot?startapp=1548"
+    )
+    sender = SenderContext(is_trusted=True)
+
+    assert not should_skip(normalized=normalized, sender=sender, scan_admins=False)

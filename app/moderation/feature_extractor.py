@@ -75,6 +75,7 @@ class MessageFeatures:
     contains_tme_link: bool
     contains_bot_start_link: bool
     contains_invite_link: bool
+    contains_forwarded_story: bool
     contains_shortener: bool
     contains_porn_bait: bool
     contains_adult_spam_cta: bool
@@ -131,6 +132,7 @@ def extract_features(
         re.search(r"(?:t|telegram)\.me/(?:joinchat/|\+)", link, re.IGNORECASE)
         for link in normalized.telegram_links
     )
+    contains_forwarded_story = "forwarded_telegram_story" in normalized.content_flags
     contains_shortener = any(domain in SHORTENER_DOMAINS for domain in normalized.domains)
 
     porn_patterns = [
@@ -165,6 +167,7 @@ def extract_features(
 
     adult_lure_patterns = [
         r"\b(?:xxx|nsfw|onlyfans)\b",
+        r"\bwet\s+dreams?\b",
         r"\b(?:hidden\s+cam|private\s+tape|full\s+tape|uncut\s+video|full\s+scene)\b",
         (
             r"\b(?:leaked?|caught|spotted|banned|deleted|exclusive|live|hidden)\b.{0,60}"
@@ -248,6 +251,7 @@ def extract_features(
         or contains_urgency_lure
         or contains_bot_start_link
         or contains_porn_bait
+        or contains_forwarded_story
     )
     contains_porn_bait = contains_porn_bait or contains_suspicious_adult_story_lure
 
@@ -305,6 +309,7 @@ def extract_features(
         domain_blocked
         or contains_bot_start_link
         or contains_invite_link
+        or (contains_forwarded_story and contains_suspicious_adult_story_lure)
         or (
             normalized.domains
             and (
@@ -325,6 +330,7 @@ def extract_features(
         contains_tme_link,
         contains_bot_start_link,
         contains_invite_link,
+        contains_forwarded_story,
         contains_shortener,
         contains_porn_bait,
         contains_adult_spam_cta,
@@ -350,6 +356,7 @@ def extract_features(
         contains_tme_link=contains_tme_link,
         contains_bot_start_link=contains_bot_start_link,
         contains_invite_link=contains_invite_link,
+        contains_forwarded_story=contains_forwarded_story,
         contains_shortener=contains_shortener,
         contains_porn_bait=contains_porn_bait,
         contains_adult_spam_cta=contains_adult_spam_cta,

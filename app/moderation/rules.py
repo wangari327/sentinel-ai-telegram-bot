@@ -25,6 +25,7 @@ def compute_rule_score(features: MessageFeatures) -> RuleScore:
         "domain_blocked": (0.86, "blocked domain"),
         "contains_bot_start_link": (0.42, "Telegram bot start link"),
         "contains_invite_link": (0.34, "Telegram invite link"),
+        "contains_forwarded_story": (0.18, "forwarded Telegram story"),
         "contains_shortener": (0.22, "shortened URL"),
         "contains_porn_bait": (0.44, "porn-bait wording"),
         "contains_adult_spam_cta": (0.38, "adult spam call-to-action"),

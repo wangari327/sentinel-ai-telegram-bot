@@ -88,6 +88,7 @@ def build_classifier_messages(payload: dict[str, Any]) -> list[dict[str, str]]:
             "connect wallet",
             "login to continue",
             "suspicious t.me bot start links",
+            "forwarded Telegram stories from adult-bait channels",
             "suspicious invite links",
             "repeated link-only posts",
             "compromised-user style messages",

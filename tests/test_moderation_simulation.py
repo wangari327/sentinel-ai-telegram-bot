@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import date
+from types import SimpleNamespace
 
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
@@ -39,6 +40,7 @@ class FakeMessage:
     entities: list[object] | None = None
     caption_entities: list[object] | None = None
     reply_to_message: object | None = None
+    story: object | None = None
 
 
 @dataclass(slots=True)
@@ -122,6 +124,84 @@ async def test_pipeline_deletes_hot_instagram_adult_bait_even_without_url() -> N
     )
     bot = FakeBot()
     message = FakeMessage(text="Hot Instagram girl got exposed 🔥 riding cock like crazy")
+
+    with _session() as session:
+        group = repositories.get_or_create_group(
+            session,
+            telegram_chat_id=-1001,
+            title="Series 2022 Requests",
+            chat_type="supergroup",
+            settings=settings,
+        )
+        group.setup_completed = True
+        result = await process_group_message(
+            message=message,
+            bot=bot,
+            session=session,
+            settings=settings,
+            permissions=FakePermissions(),
+            sender_is_admin=False,
+        )
+
+    assert result.decision is not None
+    assert result.decision.action == "delete"
+    assert bot.deleted == [(-1001, 101)]
+
+
+async def test_pipeline_deletes_current_adult_story_caption_campaign() -> None:
+    settings = load_settings(
+        {
+            "AUTHORIZED_CHAT_IDS": "-1001",
+            "DEFAULT_GROUP_MODE": "normal",
+            "AI_PROVIDER": "rules_only",
+            "AI_FALLBACK_PROVIDER": "rules_only",
+            "SUPPORT_ENABLED": "false",
+        }
+    )
+    bot = FakeBot()
+    message = FakeMessage(
+        text="",
+        caption="Watch HOT xXXx Here https://t.me/yofurswetzdreabot?startapp=1548",
+    )
+
+    with _session() as session:
+        group = repositories.get_or_create_group(
+            session,
+            telegram_chat_id=-1001,
+            title="Series 2022 Requests",
+            chat_type="supergroup",
+            settings=settings,
+        )
+        group.setup_completed = True
+        result = await process_group_message(
+            message=message,
+            bot=bot,
+            session=session,
+            settings=settings,
+            permissions=FakePermissions(),
+            sender_is_admin=False,
+        )
+
+    assert result.decision is not None
+    assert result.decision.action == "delete"
+    assert bot.deleted == [(-1001, 101)]
+
+
+async def test_pipeline_deletes_adult_source_story_when_caption_is_hidden() -> None:
+    settings = load_settings(
+        {
+            "AUTHORIZED_CHAT_IDS": "-1001",
+            "DEFAULT_GROUP_MODE": "normal",
+            "AI_PROVIDER": "rules_only",
+            "AI_FALLBACK_PROVIDER": "rules_only",
+            "SUPPORT_ENABLED": "false",
+        }
+    )
+    bot = FakeBot()
+    message = FakeMessage(
+        text="",
+        story=SimpleNamespace(chat=SimpleNamespace(title="Wet Dreams"), id=1548),
+    )
 
     with _session() as session:
         group = repositories.get_or_create_group(

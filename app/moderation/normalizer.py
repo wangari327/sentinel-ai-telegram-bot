@@ -25,6 +25,7 @@ class NormalizedMessage:
     urls: list[str]
     domains: list[str]
     telegram_links: list[str]
+    content_flags: list[str]
     text_hash: str
     zero_width_count: int
     suspicious_unicode_count: int
@@ -88,7 +89,9 @@ def extract_domains(urls: list[str]) -> list[str]:
 
 def extract_telegram_links(text: str, urls: list[str]) -> list[str]:
     candidates = [match.group(0).rstrip(".,);]\"'") for match in TELEGRAM_LINK_RE.finditer(text)]
-    candidates.extend(url for url in urls if "t.me/" in url.lower() or "telegram.me/" in url.lower())
+    candidates.extend(
+        url for url in urls if "t.me/" in url.lower() or "telegram.me/" in url.lower()
+    )
     links: list[str] = []
     seen: set[str] = set()
     for candidate in candidates:
@@ -114,9 +117,11 @@ def normalize_message_parts(
     caption: str | None = None,
     entities: list[object] | None = None,
     caption_entities: list[object] | None = None,
+    metadata_text: str | None = None,
+    content_flags: list[str] | None = None,
     excerpt_length: int = 500,
 ) -> NormalizedMessage:
-    raw = "\n".join(part for part in (text, caption) if part)
+    raw = "\n".join(part for part in (text, caption, metadata_text) if part)
     normalized = normalize_text(raw)
     merged_entities: list[object] = []
     if entities:
@@ -133,6 +138,7 @@ def normalize_message_parts(
         urls=urls,
         domains=domains,
         telegram_links=telegram_links,
+        content_flags=list(dict.fromkeys(content_flags or [])),
         text_hash=text_hash(normalized),
         zero_width_count=len(ZERO_WIDTH_RE.findall(raw)),
         suspicious_unicode_count=suspicious_unicode_count(raw),
@@ -140,9 +146,32 @@ def normalize_message_parts(
 
 
 def normalize_telegram_message(message: object) -> NormalizedMessage:
+    metadata_parts: list[str] = []
+    content_flags: list[str] = []
+    story = getattr(message, "story", None)
+    if story is not None:
+        content_flags.append("forwarded_telegram_story")
+        story_chat = getattr(story, "chat", None)
+        story_source = _chat_label(story_chat)
+        if story_source:
+            metadata_parts.append(f"Forwarded Telegram story from {story_source}")
+        else:
+            metadata_parts.append("Forwarded Telegram story")
     return normalize_message_parts(
         text=getattr(message, "text", None),
         caption=getattr(message, "caption", None),
         entities=getattr(message, "entities", None),
         caption_entities=getattr(message, "caption_entities", None),
+        metadata_text="\n".join(metadata_parts) or None,
+        content_flags=content_flags,
     )
+
+
+def _chat_label(chat: object | None) -> str | None:
+    if chat is None:
+        return None
+    for field in ("title", "username", "full_name", "first_name"):
+        value = getattr(chat, field, None)
+        if value:
+            return str(value)
+    return None

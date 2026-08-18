@@ -13,8 +13,7 @@ def test_porn_bait_obfuscation_detection() -> None:
 def test_current_adult_bot_campaign_is_high_risk() -> None:
     normalized = normalize_message_parts(
         caption=(
-            "The shy maid is taking xXx red heart down "
-            "https://t.me/ojetexxx_bot?startapp=1436"
+            "The shy maid is taking xXx red heart down " "https://t.me/ojetexxx_bot?startapp=1436"
         )
     )
     features = extract_features(normalized)
@@ -22,6 +21,32 @@ def test_current_adult_bot_campaign_is_high_risk() -> None:
     assert features.contains_bot_start_link
     assert features.contains_porn_bait
     assert features.contains_adult_spam_cta
+    assert features.contains_suspicious_adult_story_lure
+    assert features.high_risk_link
+
+
+def test_current_forwarded_story_caption_campaign_is_high_risk() -> None:
+    normalized = normalize_message_parts(
+        caption="Watch HOT xXXx Here https://t.me/yofurswetzdreabot?startapp=1548"
+    )
+    features = extract_features(normalized)
+
+    assert features.contains_bot_start_link
+    assert features.contains_porn_bait
+    assert features.contains_adult_spam_cta
+    assert features.contains_suspicious_adult_story_lure
+    assert features.high_risk_link
+
+
+def test_adult_source_forwarded_story_is_high_risk_even_when_caption_hidden() -> None:
+    normalized = normalize_message_parts(
+        metadata_text="Forwarded Telegram story from Wet Dreams",
+        content_flags=["forwarded_telegram_story"],
+    )
+    features = extract_features(normalized)
+
+    assert features.contains_forwarded_story
+    assert features.contains_porn_bait
     assert features.contains_suspicious_adult_story_lure
     assert features.high_risk_link
 
