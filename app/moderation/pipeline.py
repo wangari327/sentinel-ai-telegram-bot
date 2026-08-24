@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import asyncio
+import re
+from collections import defaultdict, deque
 from dataclasses import asdict, dataclass, replace
+from time import monotonic
 
 from sqlalchemy.orm import Session
 
@@ -55,6 +58,11 @@ from app.support.responder import render_support_reply
 from app.support.tmdb import TmdbAvailability, resolve_tmdb_availability
 
 logger = get_logger(__name__)
+_RECENT_CONTEXT_TTL_SECONDS = 900
+_RECENT_CONTEXT_LIMIT = 30
+_RECENT_GROUP_TEXTS: dict[int, deque[tuple[float, str]]] = defaultdict(
+    lambda: deque(maxlen=_RECENT_CONTEXT_LIMIT)
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -133,6 +141,7 @@ async def maybe_handle_support_message(
     group: Group,
     normalized: NormalizedMessage,
     sender_user_id: int | None,
+    recent_context_texts: list[str] | None = None,
 ) -> bool:
     if not settings.support_enabled:
         return False
@@ -201,6 +210,13 @@ async def maybe_handle_support_message(
             intent=intent,
             matches=matches,
             availability=availability,
+        )
+    if not matches and intent.title_query:
+        matches = await _search_recent_context_catalog_matches(
+            session=session,
+            settings=settings,
+            intent=intent,
+            recent_context_texts=recent_context_texts or [],
         )
 
     occurrence_count: int | None = None
@@ -410,6 +426,94 @@ async def _search_ibox_catalog_variants(
         if matches:
             return matches
     return []
+
+
+async def _search_recent_context_catalog_matches(
+    *,
+    session: Session,
+    settings: Settings,
+    intent: SupportIntent,
+    recent_context_texts: list[str],
+) -> list[IboxItem]:
+    if not intent.title_query or not recent_context_texts:
+        return []
+    queries: list[str] = []
+    for text in reversed(recent_context_texts[-10:]):
+        queries.extend(_contextual_title_queries(intent=intent, context_text=text))
+    return await _search_ibox_catalog_variants(
+        session=session,
+        settings=settings,
+        intent=intent,
+        queries=queries,
+    )
+
+
+def _contextual_title_queries(*, intent: SupportIntent, context_text: str) -> list[str]:
+    if not intent.title_query or not context_text:
+        return []
+    query_words = [
+        word
+        for word in normalize_title_query(intent.title_query).casefold().split()
+        if len(word) >= 3
+    ]
+    if not query_words:
+        return []
+    context_key = normalize_title_query(context_text).casefold()
+    if not all(word in context_key for word in query_words):
+        return []
+
+    candidates: list[str] = []
+    if intent.season_number is not None:
+        season = str(intent.season_number).lstrip("0") or "0"
+        patterns = (
+            rf"(?i)([A-Za-z0-9][\w\s'&:.-]{{2,110}}?)\s+s0*{season}(?:\s*e0*\d{{1,4}})?\b",
+            rf"(?i)([A-Za-z0-9][\w\s'&:.-]{{2,110}}?)\s+season\s*0*{season}\b",
+        )
+        for pattern in patterns:
+            for match in re.finditer(pattern, context_text):
+                candidates.append(match.group(1))
+    candidates.append(context_text)
+
+    queries: list[str] = []
+    seen: set[str] = set()
+    for candidate in candidates:
+        clean = _clean_context_title_candidate(candidate)
+        if not clean:
+            continue
+        for variant in _title_query_variants(clean):
+            key = normalize_title_query(variant).casefold()
+            if key and key not in seen:
+                seen.add(key)
+                queries.append(variant)
+    return queries
+
+
+def _clean_context_title_candidate(value: str) -> str | None:
+    value = re.sub(r"https?://\S+|(?:t|telegram)\.me/\S+", " ", value, flags=re.IGNORECASE)
+    value = re.sub(r"\b\d+(?:\.\d+)?\s*(?:mb|gb)\b", " ", value, flags=re.IGNORECASE)
+    value = re.sub(
+        r"\b(?:480p|720p|1080p|2160p|4k|8k|10bit|x264|x265|hevc|h\.?264|h\.?265|"
+        r"webrip|web-dl|bluray|hdrip|dual\s+audio|complete|download|click\s+here)\b",
+        " ",
+        value,
+        flags=re.IGNORECASE,
+    )
+    value = re.sub(r"\bs0*\d{1,3}\s*e0*\d{1,4}\b", " ", value, flags=re.IGNORECASE)
+    value = re.sub(r"\bs0*\d{1,3}\b", " ", value, flags=re.IGNORECASE)
+    value = re.sub(
+        r"\b(?:season|series)\s*0*\d{1,3}(?:\s*(?:-|to)\s*0*\d{1,3})?\b",
+        " ",
+        value,
+        flags=re.IGNORECASE,
+    )
+    value = normalize_title_query(value)
+    value = re.sub(
+        r"^(?:file|folder|page|no more pages available)\s+",
+        "",
+        value,
+        flags=re.IGNORECASE,
+    )
+    return value if len(value) >= 2 else None
 
 
 def _title_query_variants(value: str | None) -> list[str]:
@@ -654,6 +758,49 @@ def _request_merge_candidate(request: object) -> dict[str, object]:
     }
 
 
+def _recent_group_context_texts(chat_id: int, current_text: str) -> list[str]:
+    now = monotonic()
+    bucket = _RECENT_GROUP_TEXTS[chat_id]
+    while bucket and now - bucket[0][0] > _RECENT_CONTEXT_TTL_SECONDS:
+        bucket.popleft()
+    current_key = normalize_title_query(current_text).casefold()
+    return [
+        text
+        for _, text in bucket
+        if not current_key or normalize_title_query(text).casefold() != current_key
+    ]
+
+
+def _remember_group_context_text(chat_id: int, text: str) -> None:
+    clean = normalize_title_query(text)
+    if not _should_remember_group_context(raw_text=text, clean_text=clean):
+        return
+    _RECENT_GROUP_TEXTS[chat_id].append((monotonic(), clean[:600]))
+
+
+def _should_remember_group_context(*, raw_text: str, clean_text: str) -> bool:
+    if len(clean_text) < 3 or clean_text.startswith("/"):
+        return False
+    lower = raw_text.casefold()
+    if any(
+        token in lower
+        for token in (
+            "t.me/",
+            "telegram.me/",
+            "http://",
+            "https://",
+            "xxx",
+            "nude",
+            "naked",
+            "watch hot",
+            "onlyfans",
+            "link expires",
+        )
+    ):
+        return False
+    return any(char.isalnum() for char in clean_text)
+
+
 def _message_sender_context(
     *,
     message: object,
@@ -701,12 +848,15 @@ async def process_group_message(
     group_settings = repositories.get_or_create_group_settings(session, group, settings)
     if not repositories.chat_is_authorized(group, settings):
         return PipelineResult(status="skipped_unauthorized_chat")
-    if is_linked_channel_announcement(message):
-        return PipelineResult(status="skipped_linked_channel_announcement")
 
     user = getattr(message, "from_user", None)
     sender_user_id = getattr(user, "id", None)
     normalized = normalize_telegram_message(message)
+    recent_context_texts = _recent_group_context_texts(chat_id, normalized.text)
+    _remember_group_context_text(chat_id, normalized.text)
+    if is_linked_channel_announcement(message):
+        return PipelineResult(status="skipped_linked_channel_announcement")
+
     is_trusted = repositories.is_trusted_user(session, group.id, sender_user_id)
     previous_violation_score = repositories.get_violation_score(session, group.id, sender_user_id)
     sender = _message_sender_context(
@@ -725,6 +875,7 @@ async def process_group_message(
             group=group,
             normalized=normalized,
             sender_user_id=sender_user_id,
+            recent_context_texts=recent_context_texts,
         )
         if support_replied:
             return PipelineResult(status="support_replied", support_replied=True)
@@ -858,6 +1009,7 @@ async def process_group_message(
             group=group,
             normalized=normalized,
             sender_user_id=sender_user_id,
+            recent_context_texts=recent_context_texts,
         )
 
     return PipelineResult(

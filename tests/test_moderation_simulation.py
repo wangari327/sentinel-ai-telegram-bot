@@ -615,6 +615,73 @@ async def test_pipeline_uses_tmdb_alias_before_logging_open_request(monkeypatch)
     assert "Lioness - Season 3 Episode 1-4" in str(bot.sent[0]["text"])
 
 
+async def test_pipeline_uses_recent_file_list_context_before_open_request(monkeypatch) -> None:
+    settings = load_settings(
+        {
+            "AUTHORIZED_CHAT_IDS": "-1001",
+            "DEFAULT_GROUP_MODE": "normal",
+            "AI_PROVIDER": "rules_only",
+            "AI_FALLBACK_PROVIDER": "rules_only",
+            "SUPPORT_ENABLED": "true",
+            "SUPPORT_AI_REPLIES": "false",
+            "SUPPORT_REPLY_CLEANUP_SECONDS": "0",
+            "TVWEB_DATABASE_URL": "postgresql://readonly:pass@example.com:5432/ibox",
+        }
+    )
+    bot = FakeBot()
+    message = FakeMessage(text="Special ops S03")
+    pipeline._RECENT_GROUP_TEXTS.clear()
+    pipeline._remember_group_context_text(
+        -1001,
+        "606.33 MB Special Ops Lioness S03E04 1080p 10bit",
+    )
+
+    def fake_search_tvweb(**kwargs) -> list[IboxItem]:
+        if kwargs["query"] == "Lioness":
+            return [
+                IboxItem(
+                    id=91,
+                    title="Lioness",
+                    episode_title="Season 3 Episode 1-4",
+                    category="tv",
+                    slug="lioness-season-3-episode-1-4",
+                    year=2026,
+                    rating=7.8,
+                    download_link=None,
+                )
+            ]
+        return []
+
+    monkeypatch.setattr(pipeline, "search_tvweb", fake_search_tvweb)
+
+    with _session() as session:
+        group = repositories.get_or_create_group(
+            session,
+            telegram_chat_id=-1001,
+            title="Series 2022 Requests",
+            chat_type="supergroup",
+            settings=settings,
+        )
+        group.setup_completed = True
+
+        result = await process_group_message(
+            message=message,
+            bot=bot,
+            session=session,
+            settings=settings,
+            permissions=FakePermissions(),
+            sender_is_admin=False,
+        )
+        open_request = session.scalar(select(SupportRequest).where(SupportRequest.status == "open"))
+
+    pipeline._RECENT_GROUP_TEXTS.clear()
+    assert result.support_replied
+    assert open_request is None
+    assert bot.sent
+    assert "Found on ibox-tv.com" in str(bot.sent[0]["text"])
+    assert "Lioness - Season 3 Episode 1-4" in str(bot.sent[0]["text"])
+
+
 async def test_pipeline_ai_log_gate_blocks_uncertain_open_request(monkeypatch) -> None:
     settings = load_settings(
         {
