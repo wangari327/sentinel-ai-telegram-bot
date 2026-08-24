@@ -472,17 +472,21 @@ def list_recent_reviewable_moderation_events(
 
 
 def moderation_event_is_reviewable(event: ModerationEvent) -> bool:
-    if event.review_result:
-        return True
     action = (event.action_taken or "").casefold()
-    if action and action not in {"allow"}:
+    if action in {
+        "ask_admin",
+        "delete",
+        "delete_after_review",
+        "delete_and_ban",
+        "delete_pending_review",
+    }:
         return True
+    if event.review_result:
+        return event.review_result not in {"not_spam", "good", "good_example"}
     label = (event.ai_label or "").casefold()
-    if label and label not in {"not_spam", "ham", "allow"}:
+    if label in {"spam", "suspicious"} and (event.ai_confidence or 0.0) >= 0.55:
         return True
     if (event.final_score or 0.0) >= 0.55 or (event.rule_score or 0.0) >= 0.25:
-        return True
-    if event.provider_error:
         return True
     if _event_reasons_are_reviewable(event.reasons or []):
         return True

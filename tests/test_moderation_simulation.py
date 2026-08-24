@@ -12,6 +12,7 @@ from app.db import repositories
 from app.db.models import Base, ModerationEvent, SupportIssue, SupportRequest, TvwebCatalogItem
 from app.moderation import pipeline
 from app.moderation.pipeline import process_group_message
+from app.support.ibox_search import IboxItem
 from app.support.tmdb import TmdbAvailability
 
 
@@ -426,6 +427,110 @@ async def test_pipeline_replies_to_misspelled_polite_title_request_from_cache() 
     assert bot.sent
     assert "Found on ibox-tv.com" in str(bot.sent[0]["text"])
     assert "Grey&#x27;s Anatomy" in str(bot.sent[0]["text"])
+
+
+async def test_pipeline_uses_direct_tvweb_lookup_for_clear_cache_miss(monkeypatch) -> None:
+    settings = load_settings(
+        {
+            "AUTHORIZED_CHAT_IDS": "-1001",
+            "DEFAULT_GROUP_MODE": "normal",
+            "AI_PROVIDER": "rules_only",
+            "AI_FALLBACK_PROVIDER": "rules_only",
+            "SUPPORT_ENABLED": "true",
+            "SUPPORT_AI_REPLIES": "false",
+            "SUPPORT_REPLY_CLEANUP_SECONDS": "0",
+            "TVWEB_DATABASE_URL": "postgresql://readonly:pass@example.com:5432/ibox",
+        }
+    )
+    bot = FakeBot()
+    message = FakeMessage(text="Merlin season 1-5 please")
+
+    def fake_search_tvweb(**kwargs) -> list[IboxItem]:
+        assert kwargs["query"] == "Merlin"
+        return [
+            IboxItem(
+                id=90,
+                title="Merlin",
+                episode_title="Season 1-5 Complete",
+                category="tv",
+                slug="merlin-season-1-5-complete",
+                year=2008,
+                rating=8.1,
+                download_link=None,
+            )
+        ]
+
+    monkeypatch.setattr(pipeline, "search_tvweb", fake_search_tvweb)
+
+    with _session() as session:
+        group = repositories.get_or_create_group(
+            session,
+            telegram_chat_id=-1001,
+            title="Series 2022 Requests",
+            chat_type="supergroup",
+            settings=settings,
+        )
+        group.setup_completed = True
+
+        result = await process_group_message(
+            message=message,
+            bot=bot,
+            session=session,
+            settings=settings,
+            permissions=FakePermissions(),
+            sender_is_admin=False,
+        )
+        request = session.scalar(select(SupportRequest))
+
+    assert result.support_replied
+    assert request is not None
+    assert request.status == "found"
+    assert request.matched_title == "Merlin - Season 1-5 Complete"
+    assert bot.sent
+    assert "Found on ibox-tv.com" in str(bot.sent[0]["text"])
+    assert "Merlin - Season 1-5 Complete" in str(bot.sent[0]["text"])
+
+
+async def test_pipeline_ignores_generic_search_engine_phrase() -> None:
+    settings = load_settings(
+        {
+            "AUTHORIZED_CHAT_IDS": "-1001",
+            "DEFAULT_GROUP_MODE": "normal",
+            "AI_PROVIDER": "rules_only",
+            "AI_FALLBACK_PROVIDER": "rules_only",
+            "SUPPORT_ENABLED": "true",
+            "SUPPORT_AI_INTENT_ENABLED": "false",
+            "SUPPORT_AI_REPLIES": "false",
+            "SUPPORT_REPLY_CLEANUP_SECONDS": "0",
+            "TVWEB_DATABASE_URL": "postgresql://readonly:pass@example.com:5432/ibox",
+        }
+    )
+    bot = FakeBot()
+    message = FakeMessage(text="Search engines")
+
+    with _session() as session:
+        group = repositories.get_or_create_group(
+            session,
+            telegram_chat_id=-1001,
+            title="Series 2022 Requests",
+            chat_type="supergroup",
+            settings=settings,
+        )
+        group.setup_completed = True
+
+        result = await process_group_message(
+            message=message,
+            bot=bot,
+            session=session,
+            settings=settings,
+            permissions=FakePermissions(),
+            sender_is_admin=False,
+        )
+        request = session.scalar(select(SupportRequest))
+
+    assert not result.support_replied
+    assert request is None
+    assert bot.sent == []
 
 
 async def test_pipeline_clarifies_season_only_reply_instead_of_random_search() -> None:

@@ -8,7 +8,11 @@ from typing import Any
 import httpx
 
 from app.config import Settings
-from app.support.assistant import SupportIntent, extract_season_episode_numbers
+from app.support.assistant import (
+    SupportIntent,
+    extract_season_episode_ranges,
+    support_title_query_is_allowed,
+)
 from app.support.ibox_search import normalize_title_query
 from app.support.responder import select_support_chat_config
 
@@ -50,11 +54,18 @@ async def classify_support_intent_with_ai(
                 data = _parse_json(_choice_text(response.json()))
                 intent = _intent_from_data(data, settings=settings)
                 if intent:
-                    season_number, episode_number = extract_season_episode_numbers(text)
+                    (
+                        season_number,
+                        season_end_number,
+                        episode_number,
+                        episode_end_number,
+                    ) = extract_season_episode_ranges(text)
                     return replace(
                         intent,
                         season_number=intent.season_number or season_number,
+                        season_end_number=intent.season_end_number or season_end_number,
                         episode_number=intent.episode_number or episode_number,
+                        episode_end_number=intent.episode_end_number or episode_end_number,
                     )
             except (KeyError, TypeError, ValueError, httpx.HTTPError):
                 pass
@@ -65,7 +76,8 @@ async def classify_support_intent_with_ai(
                         "content": (
                             "Repair the previous output. Return only valid JSON with "
                             "kind, confidence, title_query, category_hint, issue_type, "
-                            "season_number, and episode_number."
+                            "season_number, season_end_number, episode_number, "
+                            "and episode_end_number."
                         ),
                     }
                 )
@@ -130,7 +142,8 @@ def _messages(text: str) -> list[dict[str, str]]:
                 '{"kind":"none|request|issue|howto|release","confidence":0.0,'
                 '"title_query":null|string,"category_hint":null|"movie"|"tv"|"anime",'
                 '"issue_type":null|"broken_link"|"missing_episode"|"banned"|"playback"|"general",'
-                '"season_number":null|number,"episode_number":null|number}. '
+                '"season_number":null|number,"season_end_number":null|number,'
+                '"episode_number":null|number,"episode_end_number":null|number}. '
                 "Use request for title requests, including bare media titles like "
                 "'Avatar', 'godzilla minus one', or 'requesting Shogun'. "
                 "Use issue for broken/expired links, missing episodes, banned/removed items, "
@@ -197,7 +210,7 @@ def _intent_from_data(data: dict[str, Any], *, settings: Settings) -> SupportInt
 
     title_query = data.get("title_query")
     title = normalize_title_query(str(title_query)) if title_query else None
-    if title and len(title) < 2:
+    if title and (len(title) < 2 or not support_title_query_is_allowed(title)):
         title = None
 
     category = data.get("category_hint")
@@ -212,6 +225,8 @@ def _intent_from_data(data: dict[str, Any], *, settings: Settings) -> SupportInt
 
     season_number = _optional_int(data.get("season_number"))
     episode_number = _optional_int(data.get("episode_number"))
+    season_end_number = _optional_int(data.get("season_end_number"))
+    episode_end_number = _optional_int(data.get("episode_end_number"))
 
     if kind == "howto":
         return SupportIntent(
@@ -219,7 +234,9 @@ def _intent_from_data(data: dict[str, Any], *, settings: Settings) -> SupportInt
             title_query=title,
             category_hint=category_hint,
             season_number=season_number,
+            season_end_number=season_end_number,
             episode_number=episode_number,
+            episode_end_number=episode_end_number,
         )
     if kind == "request" and title:
         return SupportIntent(
@@ -227,7 +244,9 @@ def _intent_from_data(data: dict[str, Any], *, settings: Settings) -> SupportInt
             title_query=title,
             category_hint=category_hint,
             season_number=season_number,
+            season_end_number=season_end_number,
             episode_number=episode_number,
+            episode_end_number=episode_end_number,
         )
     if kind == "release" and title:
         return SupportIntent(
@@ -235,7 +254,9 @@ def _intent_from_data(data: dict[str, Any], *, settings: Settings) -> SupportInt
             title_query=title,
             category_hint=category_hint,
             season_number=season_number,
+            season_end_number=season_end_number,
             episode_number=episode_number,
+            episode_end_number=episode_end_number,
         )
     if kind == "issue":
         return SupportIntent(
@@ -244,7 +265,9 @@ def _intent_from_data(data: dict[str, Any], *, settings: Settings) -> SupportInt
             category_hint=category_hint,
             issue_type=issue_type or "general",
             season_number=season_number,
+            season_end_number=season_end_number,
             episode_number=episode_number,
+            episode_end_number=episode_end_number,
         )
     return None
 

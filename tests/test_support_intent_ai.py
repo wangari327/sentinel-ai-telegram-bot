@@ -63,6 +63,42 @@ def test_ai_intent_preserves_season_episode_numbers() -> None:
     assert intent.episode_number == 8
 
 
+def test_ai_intent_preserves_season_range() -> None:
+    settings = load_settings({})
+
+    intent = _intent_from_data(
+        {
+            "kind": "request",
+            "confidence": 0.92,
+            "title_query": "Merlin",
+            "category_hint": "tv",
+            "season_number": 1,
+            "season_end_number": 5,
+        },
+        settings=settings,
+    )
+
+    assert intent is not None
+    assert intent.season_number == 1
+    assert intent.season_end_number == 5
+
+
+def test_ai_intent_rejects_generic_search_engine_request() -> None:
+    settings = load_settings({})
+
+    intent = _intent_from_data(
+        {
+            "kind": "request",
+            "confidence": 0.92,
+            "title_query": "Search engines",
+            "category_hint": None,
+        },
+        settings=settings,
+    )
+
+    assert intent is None
+
+
 def test_ai_intent_accepts_howto_without_title() -> None:
     settings = load_settings({})
 

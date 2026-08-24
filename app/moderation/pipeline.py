@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from dataclasses import asdict, dataclass
 
 from sqlalchemy.orm import Session
@@ -14,6 +15,7 @@ from app.bot.telegram_actions import notify_admin_about_event
 from app.config import Settings
 from app.db import repositories
 from app.db.models import Group
+from app.logging import get_logger
 from app.moderation.actions import ActionResult, execute_telegram_decision
 from app.moderation.ai_classifier import (
     ClassificationRequest,
@@ -37,13 +39,15 @@ from app.support.assistant import (
     filter_matches_for_requested_part,
     title_query_with_requested_part,
 )
-from app.support.ibox_search import IboxItem, search_tvweb_cache
+from app.support.ibox_search import IboxItem, search_tvweb, search_tvweb_cache
 from app.support.intent_ai import (
     choose_support_merge_candidate_with_ai,
     classify_support_intent_with_ai,
 )
 from app.support.responder import render_support_reply
 from app.support.tmdb import TmdbAvailability, resolve_tmdb_availability
+
+logger = get_logger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -121,30 +125,31 @@ async def maybe_handle_support_message(
         context_title=context_title,
     )
     if intent is None:
-        intent = await classify_support_intent_with_ai(
-            text=normalized.text,
-            settings=settings,
-        )
-    if intent is None:
         intent = detect_support_intent(
             normalized.text,
             allow_bare_title=settings.tvweb_cache_enabled,
             context_title=context_title,
         )
     if intent is None:
+        intent = await classify_support_intent_with_ai(
+            text=normalized.text,
+            settings=settings,
+        )
+    if intent is None:
         return False
     matches = []
     if intent.title_query:
-        matches = search_tvweb_cache(
+        matches = await _search_ibox_catalog(
             session=session,
             settings=settings,
-            query=intent.title_query,
-            category=intent.category_hint,
+            intent=intent,
         )
-        matches = filter_matches_for_requested_part(matches, intent)
 
     availability: TmdbAvailability | None = None
-    if intent.kind in {"release", "request", "issue"} and intent.title_query:
+    needs_availability = intent.kind == "release" or (
+        intent.kind in {"request", "issue"} and not matches
+    )
+    if needs_availability and intent.title_query:
         availability = await resolve_tmdb_availability(
             settings=settings,
             title_query=intent.title_query,
@@ -253,6 +258,68 @@ async def maybe_handle_support_message(
         reply=reply,
     )
     return True
+
+
+async def _search_ibox_catalog(
+    *,
+    session: Session,
+    settings: Settings,
+    intent: SupportIntent,
+) -> list[IboxItem]:
+    if not intent.title_query:
+        return []
+    matches = search_tvweb_cache(
+        session=session,
+        settings=settings,
+        query=intent.title_query,
+        category=intent.category_hint,
+    )
+    filtered = filter_matches_for_requested_part(matches, intent)
+    if filtered:
+        return filtered
+
+    if settings.tvweb_database_url:
+        direct = await _search_ibox_database(settings=settings, intent=intent)
+        if direct:
+            return direct
+
+    return []
+
+
+async def _search_ibox_database(
+    *,
+    settings: Settings,
+    intent: SupportIntent,
+) -> list[IboxItem]:
+    if not intent.title_query:
+        return []
+    categories = [intent.category_hint]
+    if intent.category_hint is not None:
+        categories.append(None)
+    has_requested_part = intent.season_number is not None or intent.episode_number is not None
+    first_unfiltered: list[IboxItem] = []
+    for category in categories:
+        try:
+            matches = await asyncio.to_thread(
+                search_tvweb,
+                settings=settings,
+                query=intent.title_query,
+                category=category,
+                limit=12 if has_requested_part else 3,
+            )
+        except Exception:
+            logger.exception(
+                "Direct TVWEB_DATABASE_URL lookup failed query=%r category=%r",
+                intent.title_query,
+                category,
+            )
+            return []
+        filtered = filter_matches_for_requested_part(matches, intent)
+        if filtered:
+            return filtered[:3]
+        if matches:
+            first_unfiltered = first_unfiltered or matches
+    return [] if has_requested_part else first_unfiltered[:3]
 
 
 async def _send_support_reply(

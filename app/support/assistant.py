@@ -149,6 +149,7 @@ STOP_PREFIXES = (
     "upload",
     "add",
     "search for",
+    "search",
     "looking for",
     "link",
     "links",
@@ -157,6 +158,18 @@ STOP_PREFIXES = (
     "when will",
 )
 POLITE_SUFFIXES = ("please", "pls", "plz", "thanks", "thank you")
+GENERIC_TITLE_QUERIES = {
+    "browser",
+    "browsers",
+    "engine",
+    "engines",
+    "google",
+    "internet",
+    "search engine",
+    "search engines",
+    "website",
+    "websites",
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -167,7 +180,9 @@ class SupportIntent:
     issue_type: str | None = None
     context_title: str | None = None
     season_number: int | None = None
+    season_end_number: int | None = None
     episode_number: int | None = None
+    episode_end_number: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -196,7 +211,12 @@ def detect_support_intent(
     context_title: str | None = None,
 ) -> SupportIntent | None:
     lower = text.casefold()
-    season_number, episode_number = extract_season_episode_numbers(text)
+    (
+        season_number,
+        season_end_number,
+        episode_number,
+        episode_end_number,
+    ) = extract_season_episode_ranges(text)
     incomplete_episode = extract_incomplete_episode_reference(text)
     if incomplete_episode:
         return SupportIntent(
@@ -205,7 +225,9 @@ def detect_support_intent(
             category_hint="tv",
             context_title=context_title,
             season_number=season_number,
+            season_end_number=season_end_number,
             episode_number=episode_number,
+            episode_end_number=episode_end_number,
         )
 
     release_query = _extract_release_question(text)
@@ -215,7 +237,9 @@ def detect_support_intent(
             title_query=release_query,
             category_hint=_category_hint(lower) or "tv",
             season_number=season_number,
+            season_end_number=season_end_number,
             episode_number=episode_number,
+            episode_end_number=episode_end_number,
         )
 
     if any(_contains_phrase(lower, phrase) for phrase in HOWTO_WORDS):
@@ -224,7 +248,9 @@ def detect_support_intent(
             title_query=_extract_title_query(text),
             category_hint=_category_hint(lower),
             season_number=season_number,
+            season_end_number=season_end_number,
             episode_number=episode_number,
+            episode_end_number=episode_end_number,
         )
 
     if _looks_like_missing_episode_issue(lower):
@@ -234,7 +260,9 @@ def detect_support_intent(
             category_hint=_category_hint(lower) or "tv",
             issue_type="missing_episode",
             season_number=season_number,
+            season_end_number=season_end_number,
             episode_number=episode_number,
+            episode_end_number=episode_end_number,
         )
 
     for issue_type, phrases in ISSUE_TYPES.items():
@@ -245,7 +273,9 @@ def detect_support_intent(
                 category_hint=_category_hint(lower),
                 issue_type=issue_type,
                 season_number=season_number,
+                season_end_number=season_end_number,
                 episode_number=episode_number,
+                episode_end_number=episode_end_number,
             )
 
     if any(_contains_phrase(lower, word) for word in REQUEST_WORDS):
@@ -256,7 +286,9 @@ def detect_support_intent(
                 title_query=title_query,
                 category_hint=_category_hint(lower),
                 season_number=season_number,
+                season_end_number=season_end_number,
                 episode_number=episode_number,
+                episode_end_number=episode_end_number,
             )
     if allow_bare_title:
         title_query = _extract_bare_title_query(text)
@@ -275,31 +307,49 @@ def detect_support_intent(
                 title_query=title_query,
                 category_hint=category_hint,
                 season_number=season_number,
+                season_end_number=season_end_number,
                 episode_number=episode_number,
+                episode_end_number=episode_end_number,
             )
     return None
 
 
 def extract_season_episode_numbers(text: str) -> tuple[int | None, int | None]:
+    season_number, _, episode_number, _ = extract_season_episode_ranges(text)
+    return season_number, episode_number
+
+
+def extract_season_episode_ranges(
+    text: str,
+) -> tuple[int | None, int | None, int | None, int | None]:
     season_number: int | None = None
+    season_end_number: int | None = None
     episode_number: int | None = None
+    episode_end_number: int | None = None
     compact_match = re.search(r"(?i)\bs0*(\d{1,3})\s*e0*(\d{1,4})\b", text)
-    season_match = re.search(r"(?i)\b(?:season|series|s)\s*0*(\d{1,3})\b", text)
+    season_match = re.search(
+        r"(?i)\b(?:season|series|s)\s*0*(\d{1,3})" r"(?:\s*(?:-|\u2013|to)\s*0*(\d{1,3}))?\b",
+        text,
+    )
     if compact_match:
         season_number = int(compact_match.group(1))
         episode_number = int(compact_match.group(2))
     if season_number is None and season_match:
         season_number = int(season_match.group(1))
+        if season_match.group(2):
+            season_end_number = int(season_match.group(2))
     episode_match = re.search(
-        r"(?i)\b(?:episode|ep)\s*0*(\d{1,4})(?:\s*(?:-|\u2013)\s*\d{1,4})?\b",
+        r"(?i)\b(?:episode|ep)\s*0*(\d{1,4})" r"(?:\s*(?:-|\u2013|to)\s*0*(\d{1,4}))?\b",
         text,
     )
     short_episode_match = re.search(r"(?i)\be0*(\d{1,4})\b", text)
     if episode_number is None and episode_match:
         episode_number = int(episode_match.group(1))
+        if episode_match.group(2):
+            episode_end_number = int(episode_match.group(2))
     elif episode_number is None and short_episode_match:
         episode_number = int(short_episode_match.group(1))
-    return season_number, episode_number
+    return season_number, season_end_number, episode_number, episode_end_number
 
 
 def extract_incomplete_episode_reference(text: str) -> str | None:
@@ -307,11 +357,12 @@ def extract_incomplete_episode_reference(text: str) -> str | None:
     if not value:
         return None
     if re.fullmatch(
-        r"(?i)(?:season|series|s)\s*\d+(?:\s*(?:episode|ep|e)\s*\d+(?:\s*(?:-|\u2013)\s*\d+)?)?",
+        r"(?i)(?:season|series|s)\s*\d+(?:\s*(?:-|\u2013|to)\s*\d+)?"
+        r"(?:\s*(?:episode|ep|e)\s*\d+(?:\s*(?:-|\u2013|to)\s*\d+)?)?",
         value,
     ):
         return value
-    if re.fullmatch(r"(?i)(?:episode|ep|e)\s*\d+(?:\s*(?:-|\u2013)\s*\d+)?", value):
+    if re.fullmatch(r"(?i)(?:episode|ep|e)\s*\d+(?:\s*(?:-|\u2013|to)\s*\d+)?", value):
         return value
     return None
 
@@ -323,13 +374,13 @@ def extract_support_title_query(text: str) -> str | None:
 def extract_support_context_title(text: str) -> str | None:
     value = re.sub(r"https?://\S+", " ", text)
     value = re.sub(
-        r"\b(?:season|series)\s*\d+.*$",
+        r"\b(?:season|series)\s*\d+(?:\s*(?:-|\u2013|to)\s*\d+)?.*$",
         " ",
         value,
         flags=re.IGNORECASE,
     )
     value = re.sub(
-        r"\b(?:episode|ep)\s*\d+(?:\s*(?:-|\u2013)\s*\d+)?.*$",
+        r"\b(?:episode|ep)\s*\d+(?:\s*(?:-|\u2013|to)\s*\d+)?.*$",
         " ",
         value,
         flags=re.IGNORECASE,
@@ -343,7 +394,7 @@ def extract_support_context_title(text: str) -> str | None:
     value = _strip_polite_suffixes(normalize_title_query(value))
     if len(value) < 2:
         return None
-    if value.casefold() in TITLE_QUERY_BLOCKLIST:
+    if _title_query_is_blocked(value):
         return None
     return value
 
@@ -356,8 +407,9 @@ def _contains_phrase(lower_text: str, phrase: str) -> bool:
 def _looks_like_missing_episode_issue(lower_text: str) -> bool:
     return bool(
         re.search(
-            r"\bmissing\s+(?:episode|ep|e)\s*\d+\b"
-            r"|\b(?:episode|ep|e)\s*\d+\b.{0,24}\b(?:missing|not\s+there|not\s+available)\b",
+            r"\bmissing\s+(?:episode|ep|e)\s*\d+(?:\s*(?:-|\u2013|to)\s*\d+)?\b"
+            r"|\b(?:episode|ep|e)\s*\d+(?:\s*(?:-|\u2013|to)\s*\d+)?\b"
+            r".{0,24}\b(?:missing|not\s+there|not\s+available)\b",
             lower_text,
         )
     )
@@ -386,13 +438,13 @@ def _extract_title_query(text: str) -> str | None:
         flags=re.IGNORECASE,
     )
     value = re.sub(
-        r"\bmissing\s+(?:episode|ep|e)\s*\d+(?:\s*(?:-|\u2013)\s*\d+)?\b",
+        r"\bmissing\s+(?:episode|ep|e)\s*\d+(?:\s*(?:-|\u2013|to)\s*\d+)?\b",
         " ",
         value,
         flags=re.IGNORECASE,
     )
     value = re.sub(
-        r"\b(?:episode|ep|e)\s*\d+(?:\s*(?:-|\u2013)\s*\d+)?\s+"
+        r"\b(?:episode|ep|e)\s*\d+(?:\s*(?:-|\u2013|to)\s*\d+)?\s+"
         r"(?:missing|not\s+there|not\s+available)\b",
         " ",
         value,
@@ -408,21 +460,31 @@ def _extract_title_query(text: str) -> str | None:
         flags=re.IGNORECASE,
     )
     value = re.sub(
-        r"\bs\d{1,3}\s*e\d{1,4}(?:\s*(?:-|\u2013)\s*\d{1,4})?\b",
-        " ",
-        value,
-        flags=re.IGNORECASE,
-    )
-    value = re.sub(r"\b(?:season|series)\s*\d+\b", " ", value, flags=re.IGNORECASE)
-    value = re.sub(r"\bs\s*\d+\b", " ", value, flags=re.IGNORECASE)
-    value = re.sub(
-        r"\b(?:episode|ep)\s*\d+(?:\s*(?:-|\u2013)\s*\d+)?\b",
+        r"\bs\d{1,3}\s*e\d{1,4}(?:\s*(?:-|\u2013|to)\s*\d{1,4})?\b",
         " ",
         value,
         flags=re.IGNORECASE,
     )
     value = re.sub(
-        r"\be\s*\d+(?:\s*(?:-|\u2013)\s*\d+)?\b",
+        r"\b(?:season|series)\s*\d+(?:\s*(?:-|\u2013|to)\s*\d+)?\b",
+        " ",
+        value,
+        flags=re.IGNORECASE,
+    )
+    value = re.sub(
+        r"\bs\s*\d+(?:\s*(?:-|\u2013|to)\s*\d+)?\b",
+        " ",
+        value,
+        flags=re.IGNORECASE,
+    )
+    value = re.sub(
+        r"\b(?:episode|ep)\s*\d+(?:\s*(?:-|\u2013|to)\s*\d+)?\b",
+        " ",
+        value,
+        flags=re.IGNORECASE,
+    )
+    value = re.sub(
+        r"\be\s*\d+(?:\s*(?:-|\u2013|to)\s*\d+)?\b",
         " ",
         value,
         flags=re.IGNORECASE,
@@ -456,7 +518,7 @@ def _extract_title_query(text: str) -> str | None:
     value = normalize_title_query(value)
     if len(value) < 2:
         return None
-    if value.casefold() in TITLE_QUERY_BLOCKLIST:
+    if _title_query_is_blocked(value):
         return None
     return value
 
@@ -466,7 +528,7 @@ def _extract_bare_title_query(text: str) -> str | None:
         return None
     value = _strip_polite_suffixes(normalize_title_query(text.strip(" ?!.,:;\"'()[]{}")))
     lower = value.casefold()
-    if lower in BARE_TITLE_BLOCKLIST:
+    if lower in BARE_TITLE_BLOCKLIST or _title_query_is_blocked(value):
         return None
     if extract_incomplete_episode_reference(value):
         return None
@@ -490,7 +552,7 @@ def _valid_bare_title_candidate(value: str, *, allow_short: bool = False) -> boo
     words = value.split()
     if not words or len(words) > 6:
         return False
-    if lower in BARE_TITLE_BLOCKLIST or lower in TITLE_QUERY_BLOCKLIST:
+    if lower in BARE_TITLE_BLOCKLIST or _title_query_is_blocked(value):
         return False
     if len(words) == 1 and lower in BARE_TITLE_BLOCKLIST:
         return False
@@ -512,6 +574,17 @@ def _strip_polite_suffixes(value: str) -> str:
                 value = next_value
                 changed = True
     return value
+
+
+def _title_query_is_blocked(value: str) -> bool:
+    lower = normalize_title_query(value).casefold()
+    return lower in TITLE_QUERY_BLOCKLIST or lower in GENERIC_TITLE_QUERIES
+
+
+def support_title_query_is_allowed(value: str | None) -> bool:
+    if not value:
+        return False
+    return not _title_query_is_blocked(value)
 
 
 def _bare_title_kind(
@@ -577,30 +650,52 @@ def _item_matches_requested_part(item: IboxItem, intent: SupportIntent) -> bool:
             if part
         )
     ).casefold()
-    if intent.season_number is not None and not _season_matches_value(value, intent.season_number):
+    if intent.season_number is not None and not _season_matches_value(
+        value,
+        intent.season_number,
+        intent.season_end_number,
+    ):
         return False
-    return intent.episode_number is None or _episode_matches_value(value, intent.episode_number)
-
-
-def _season_matches_value(value: str, season_number: int) -> bool:
-    season = re.escape(str(season_number))
-    patterns = (
-        rf"\bseason\s*0?{season}\b",
-        rf"\bseries\s*0?{season}\b",
-        rf"\bs\s*0?{season}(?:\b|e\d{{1,4}}\b)",
+    return intent.episode_number is None or _episode_matches_value(
+        value,
+        intent.episode_number,
+        intent.episode_end_number,
     )
-    return any(re.search(pattern, value) for pattern in patterns)
 
 
-def _episode_matches_value(value: str, episode_number: int) -> bool:
+def _season_matches_value(
+    value: str,
+    season_number: int,
+    season_end_number: int | None = None,
+) -> bool:
+    requested_end = season_end_number or season_number
+    for match in re.finditer(
+        r"\b(?:season|series)\s*0*(\d{1,3})(?:\s*(?:-|\u2013|to)\s*0*(\d{1,3}))?\b"
+        r"|\bs0*(\d{1,3})(?:\s*(?:-|\u2013|to)\s*0*(\d{1,3}))?(?:\b|e\d{1,4}\b)",
+        value,
+        flags=re.IGNORECASE,
+    ):
+        start = int(match.group(1) or match.group(3))
+        end = int(match.group(2) or match.group(4) or start)
+        if start <= requested_end and season_number <= end:
+            return True
+    return False
+
+
+def _episode_matches_value(
+    value: str,
+    episode_number: int,
+    episode_end_number: int | None = None,
+) -> bool:
+    requested_end = episode_end_number or episode_number
     for pattern in (
-        r"\b(?:episode|ep|e)\s*0*(\d{1,4})(?:\s*(?:-|\u2013)\s*0*(\d{1,4}))?\b",
-        r"\bs\d{1,3}\s*e0*(\d{1,4})(?:\s*(?:-|\u2013)\s*0*(\d{1,4}))?\b",
+        r"\b(?:episode|ep|e)\s*0*(\d{1,4})(?:\s*(?:-|\u2013|to)\s*0*(\d{1,4}))?\b",
+        r"\bs\d{1,3}\s*e0*(\d{1,4})(?:\s*(?:-|\u2013|to)\s*0*(\d{1,4}))?\b",
     ):
         for match in re.finditer(pattern, value, flags=re.IGNORECASE):
             start = int(match.group(1))
             end = int(match.group(2) or start)
-            if start <= episode_number <= end:
+            if start <= requested_end and episode_number <= end:
                 return True
     return False
 
@@ -1057,9 +1152,15 @@ def _availability_buttons(
 def _requested_part_label(intent: SupportIntent) -> str | None:
     parts: list[str] = []
     if intent.season_number is not None:
-        parts.append(f"Season {intent.season_number}")
+        if intent.season_end_number and intent.season_end_number != intent.season_number:
+            parts.append(f"Season {intent.season_number}-{intent.season_end_number}")
+        else:
+            parts.append(f"Season {intent.season_number}")
     if intent.episode_number is not None:
-        parts.append(f"Episode {intent.episode_number}")
+        if intent.episode_end_number and intent.episode_end_number != intent.episode_number:
+            parts.append(f"Episode {intent.episode_number}-{intent.episode_end_number}")
+        else:
+            parts.append(f"Episode {intent.episode_number}")
     return " ".join(parts) or None
 
 

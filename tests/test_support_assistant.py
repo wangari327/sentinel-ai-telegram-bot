@@ -14,6 +14,7 @@ from app.support.assistant import (
     detect_support_intent,
     extract_season_episode_numbers,
     filter_matches_for_requested_part,
+    title_query_with_requested_part,
 )
 from app.support.ibox_search import IboxItem, item_url, search_tvweb_cache, search_url
 from app.support.responder import render_support_reply, select_support_chat_config
@@ -69,6 +70,17 @@ def test_bare_title_with_season_is_request_with_clean_title() -> None:
     assert intent.title_query == "Silo"
     assert intent.category_hint == "tv"
     assert intent.season_number == 4
+
+
+def test_title_with_season_range_keeps_clean_title_and_range() -> None:
+    intent = detect_support_intent("Merlin season 1-5 please", allow_bare_title=True)
+
+    assert intent is not None
+    assert intent.kind == "request"
+    assert intent.title_query == "Merlin"
+    assert intent.season_number == 1
+    assert intent.season_end_number == 5
+    assert title_query_with_requested_part(intent) == "Merlin Season 1-5"
 
 
 def test_bare_title_with_media_hint_strips_hint_and_requests() -> None:
@@ -171,6 +183,8 @@ def test_support_parser_avoids_substring_false_positives() -> None:
 
 def test_support_parser_rejects_generic_help_as_content_request() -> None:
     assert detect_support_intent("send help") is None
+    assert detect_support_intent("Search engines", allow_bare_title=True) is None
+    assert detect_support_intent("search engines") is None
 
 
 def test_playback_issue_extracts_title_after_subtitle_words() -> None:
@@ -247,6 +261,35 @@ def test_requested_episode_filter_understands_ranges() -> None:
         category_hint="tv",
         season_number=3,
         episode_number=8,
+    )
+
+    assert filter_matches_for_requested_part([item], matching) == [item]
+    assert filter_matches_for_requested_part([item], missing) == []
+
+
+def test_requested_season_filter_understands_catalog_ranges() -> None:
+    item = IboxItem(
+        id=1,
+        title="Merlin",
+        episode_title="Season 1-5 Complete",
+        category="tv",
+        slug="merlin-season-1-5-complete",
+        year=2008,
+        rating=8.0,
+        download_link=None,
+    )
+
+    matching = SupportIntent(
+        kind="request",
+        title_query="Merlin",
+        category_hint="tv",
+        season_number=4,
+    )
+    missing = SupportIntent(
+        kind="request",
+        title_query="Merlin",
+        category_hint="tv",
+        season_number=6,
     )
 
     assert filter_matches_for_requested_part([item], matching) == [item]

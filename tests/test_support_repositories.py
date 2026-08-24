@@ -184,6 +184,46 @@ def test_reviewable_moderation_history_filters_harmless_allows() -> None:
             session,
             group_id=group.id,
             telegram_chat_id=-1001,
+            telegram_message_id=13,
+            sender_user_id=444,
+            normalized_text="Merlin season 1-5 please",
+            text_hash="setup",
+            domains=[],
+            ai_label="not_spam",
+            ai_confidence=1.0,
+            rule_score=0.0,
+            final_score=0.0,
+            action_taken="monitor_setup_required",
+            action_status="ok",
+            reasons=[],
+            provider_name="mock",
+            model_name="mock",
+            prompt_version="test",
+        )
+        repositories.save_moderation_event(
+            session,
+            group_id=group.id,
+            telegram_chat_id=-1001,
+            telegram_message_id=14,
+            sender_user_id=555,
+            normalized_text="Time Bandits [2024]",
+            text_hash="monitor",
+            domains=[],
+            ai_label="not_spam",
+            ai_confidence=1.0,
+            rule_score=0.0,
+            final_score=0.0,
+            action_taken="monitor",
+            action_status="ok",
+            reasons=[],
+            provider_name="mock",
+            model_name="mock",
+            prompt_version="test",
+        )
+        repositories.save_moderation_event(
+            session,
+            group_id=group.id,
+            telegram_chat_id=-1001,
             telegram_message_id=11,
             sender_user_id=222,
             normalized_text="Hot Instagram girl got exposed riding cock like crazy",
@@ -225,5 +265,7 @@ def test_reviewable_moderation_history_filters_harmless_allows() -> None:
 
     texts = {event.normalized_text for event in events}
     assert "The Mentalist" not in texts
+    assert "Merlin season 1-5 please" not in texts
+    assert "Time Bandits [2024]" not in texts
     assert "Hot Instagram girl got exposed riding cock like crazy" in texts
     assert "claim reward verify your account" in texts
