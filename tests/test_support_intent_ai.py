@@ -1,5 +1,5 @@
 from app.config import load_settings
-from app.support.intent_ai import _intent_from_data, _merge_candidate_from_data
+from app.support.intent_ai import _intent_from_data, _log_vet_from_data, _merge_candidate_from_data
 
 
 def test_ai_intent_accepts_fuzzy_title_request() -> None:
@@ -156,3 +156,32 @@ def test_ai_merge_candidate_rejects_unknown_candidate_id() -> None:
     )
 
     assert candidate_id is None
+
+
+def test_ai_log_vet_accepts_retry_search_with_corrected_title() -> None:
+    settings = load_settings({})
+
+    vet = _log_vet_from_data(
+        {
+            "action": "retry_search",
+            "confidence": 0.91,
+            "corrected_title_query": "Special Ops: Lioness",
+            "reason": "Canonical title includes Lioness.",
+        },
+        settings=settings,
+    )
+
+    assert vet is not None
+    assert vet.action == "retry_search"
+    assert vet.corrected_title_query == "Special Ops Lioness"
+
+
+def test_ai_log_vet_rejects_low_confidence_skip() -> None:
+    settings = load_settings({})
+
+    vet = _log_vet_from_data(
+        {"action": "skip", "confidence": 0.31, "reason": "weak"},
+        settings=settings,
+    )
+
+    assert vet is None

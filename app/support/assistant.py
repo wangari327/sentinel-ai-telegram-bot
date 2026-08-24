@@ -875,6 +875,48 @@ def build_availability_reply(
     return None
 
 
+def build_log_vetting_reply(
+    *,
+    intent: SupportIntent,
+    settings: Settings,
+    suggested_title: str | None = None,
+) -> SupportReply:
+    quoted = escape(title_query_with_requested_part(intent) or intent.title_query or "that title")
+    buttons: list[SupportButton] = []
+    if suggested_title:
+        suggestion = escape(suggested_title)
+        buttons.append(
+            SupportButton(
+                text="Search iBOX",
+                url=search_url(settings, suggested_title, intent.category_hint),
+            )
+        )
+        text = (
+            "<b>Quick check</b>\n"
+            f"<blockquote>{quoted}</blockquote>\n"
+            f"I might be reading that as <b>{suggestion}</b>. Send the full title if "
+            "that is wrong; I am keeping it out of the dashboard until I am less "
+            "suspicious of my own parsing."
+        )
+    else:
+        if intent.title_query:
+            buttons.append(
+                SupportButton(
+                    text="Search iBOX",
+                    url=search_url(settings, intent.title_query, intent.category_hint),
+                )
+            )
+        text = (
+            "<b>Quick check</b>\n"
+            f"<blockquote>{quoted}</blockquote>\n"
+            "I am not fully sure that is a clean missing-title report. Drop the full "
+            "movie/show name and season/episode, and I will search it properly instead "
+            "of stuffing mystery meat into the request pile."
+        )
+    buttons.append(SupportButton(text="Tutorial", callback_data="support:tutorial"))
+    return SupportReply(text=text, allow_ai_rewrite=False, buttons=tuple(buttons))
+
+
 def build_support_reply(
     *,
     intent: SupportIntent,

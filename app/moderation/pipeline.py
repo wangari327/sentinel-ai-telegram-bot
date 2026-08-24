@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 
 from sqlalchemy.orm import Session
 
@@ -33,16 +33,23 @@ from app.support.assistant import (
     SupportReply,
     availability_blocks_logging,
     build_availability_reply,
+    build_log_vetting_reply,
     build_support_reply,
     detect_support_intent,
     extract_support_context_title,
     filter_matches_for_requested_part,
     title_query_with_requested_part,
 )
-from app.support.ibox_search import IboxItem, search_tvweb, search_tvweb_cache
+from app.support.ibox_search import (
+    IboxItem,
+    normalize_title_query,
+    search_tvweb,
+    search_tvweb_cache,
+)
 from app.support.intent_ai import (
     choose_support_merge_candidate_with_ai,
     classify_support_intent_with_ai,
+    vet_support_log_with_ai,
 )
 from app.support.responder import render_support_reply
 from app.support.tmdb import TmdbAvailability, resolve_tmdb_availability
@@ -188,8 +195,73 @@ async def maybe_handle_support_message(
                     reply=reply,
                 )
                 return True
+        matches = await _resolve_catalog_alias_matches(
+            session=session,
+            settings=settings,
+            intent=intent,
+            matches=matches,
+            availability=availability,
+        )
 
     occurrence_count: int | None = None
+    if intent.kind in {"request", "issue"} and intent.title_query and not matches:
+        vet_result = await vet_support_log_with_ai(
+            kind=intent.kind,
+            text=normalized.text,
+            intent=intent,
+            availability_title=availability.title if availability else None,
+            availability_state=availability.state() if availability else None,
+            settings=settings,
+        )
+        if vet_result is not None:
+            if vet_result.action == "retry_search" and vet_result.corrected_title_query:
+                retry_matches = await _search_ibox_catalog_variants(
+                    session=session,
+                    settings=settings,
+                    intent=intent,
+                    queries=_title_query_variants(vet_result.corrected_title_query),
+                )
+                if retry_matches:
+                    matches = retry_matches
+                else:
+                    reply = build_log_vetting_reply(
+                        intent=intent,
+                        settings=settings,
+                        suggested_title=vet_result.corrected_title_query,
+                    )
+                    await _send_support_reply(
+                        message=message,
+                        bot=bot,
+                        session=session,
+                        settings=settings,
+                        group=group,
+                        normalized=normalized,
+                        intent=intent,
+                        matches=matches,
+                        reply=reply,
+                    )
+                    return True
+            elif vet_result.action == "clarify":
+                reply = build_log_vetting_reply(
+                    intent=intent,
+                    settings=settings,
+                    suggested_title=vet_result.corrected_title_query,
+                )
+                await _send_support_reply(
+                    message=message,
+                    bot=bot,
+                    session=session,
+                    settings=settings,
+                    group=group,
+                    normalized=normalized,
+                    intent=intent,
+                    matches=matches,
+                    reply=reply,
+                )
+                return True
+            elif vet_result.action == "skip":
+                return False
+
     if intent.kind == "request" and intent.title_query:
         record_title_query = title_query_with_requested_part(intent) or intent.title_query
         status = (
@@ -295,6 +367,97 @@ async def _search_ibox_catalog(
             return direct
 
     return []
+
+
+async def _resolve_catalog_alias_matches(
+    *,
+    session: Session,
+    settings: Settings,
+    intent: SupportIntent,
+    matches: list[IboxItem],
+    availability: TmdbAvailability | None,
+) -> list[IboxItem]:
+    if matches or availability is None or not availability.found or not availability.title:
+        return matches
+    queries = _title_query_variants(availability.title)
+    return await _search_ibox_catalog_variants(
+        session=session,
+        settings=settings,
+        intent=intent,
+        queries=queries,
+    )
+
+
+async def _search_ibox_catalog_variants(
+    *,
+    session: Session,
+    settings: Settings,
+    intent: SupportIntent,
+    queries: list[str],
+) -> list[IboxItem]:
+    original = normalize_title_query(intent.title_query or "").casefold()
+    seen: set[str] = {original} if original else set()
+    for query in queries:
+        key = normalize_title_query(query).casefold()
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        matches = await _search_ibox_catalog(
+            session=session,
+            settings=settings,
+            intent=replace(intent, title_query=query),
+        )
+        if matches:
+            return matches
+    return []
+
+
+def _title_query_variants(value: str | None) -> list[str]:
+    if not value:
+        return []
+    variants: list[str] = []
+    seen: set[str] = set()
+
+    def add(candidate: str | None) -> None:
+        if not candidate:
+            return
+        clean = normalize_title_query(candidate)
+        key = clean.casefold()
+        if len(clean) >= 2 and key not in seen:
+            seen.add(key)
+            variants.append(clean)
+
+    add(value)
+    for separator in (":", " - ", "|", "/"):
+        if separator in value:
+            parts = [part.strip() for part in value.split(separator) if part.strip()]
+            for part in parts:
+                add(part)
+            if len(parts) >= 2:
+                add(parts[-1])
+
+    clean = normalize_title_query(value)
+    words = [
+        word
+        for word in clean.split()
+        if word.casefold()
+        not in {
+            "special",
+            "ops",
+            "operation",
+            "operations",
+            "the",
+            "a",
+            "an",
+            "season",
+            "series",
+        }
+    ]
+    for size in range(min(3, len(words)), 0, -1):
+        tail = " ".join(words[-size:])
+        if len(tail) >= 4:
+            add(tail)
+    return variants
 
 
 async def _search_ibox_database(

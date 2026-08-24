@@ -13,6 +13,7 @@ from app.db.models import Base, ModerationEvent, SupportIssue, SupportRequest, T
 from app.moderation import pipeline
 from app.moderation.pipeline import process_group_message
 from app.support.ibox_search import IboxItem
+from app.support.intent_ai import SupportLogVet
 from app.support.tmdb import TmdbAvailability
 
 
@@ -378,7 +379,7 @@ async def test_pipeline_replies_to_media_hint_short_title_from_cache() -> None:
     assert "E.R." in str(bot.sent[0]["text"])
 
 
-async def test_pipeline_replies_to_year_title_request_even_when_not_cached() -> None:
+async def test_pipeline_replies_to_year_title_request_even_when_not_cached(monkeypatch) -> None:
     settings = load_settings(
         {
             "AUTHORIZED_CHAT_IDS": "-1001",
@@ -393,6 +394,7 @@ async def test_pipeline_replies_to_year_title_request_even_when_not_cached() -> 
     )
     bot = FakeBot()
     message = FakeMessage(text="scam 2004")
+    monkeypatch.setattr(pipeline, "search_tvweb", lambda **kwargs: [])
 
     with _session() as session:
         group = repositories.get_or_create_group(
@@ -534,6 +536,137 @@ async def test_pipeline_uses_direct_tvweb_lookup_for_clear_cache_miss(monkeypatc
     assert bot.sent
     assert "Found on ibox-tv.com" in str(bot.sent[0]["text"])
     assert "Merlin - Season 1-5 Complete" in str(bot.sent[0]["text"])
+
+
+async def test_pipeline_uses_tmdb_alias_before_logging_open_request(monkeypatch) -> None:
+    settings = load_settings(
+        {
+            "AUTHORIZED_CHAT_IDS": "-1001",
+            "DEFAULT_GROUP_MODE": "normal",
+            "AI_PROVIDER": "rules_only",
+            "AI_FALLBACK_PROVIDER": "rules_only",
+            "SUPPORT_ENABLED": "true",
+            "SUPPORT_AI_REPLIES": "false",
+            "SUPPORT_REPLY_CLEANUP_SECONDS": "0",
+            "TVWEB_DATABASE_URL": "postgresql://readonly:pass@example.com:5432/ibox",
+            "TMDB_BEARER_TOKEN": "token",
+        }
+    )
+    bot = FakeBot()
+    message = FakeMessage(text="Special ops S03")
+
+    async def fake_resolve_tmdb_availability(**kwargs) -> TmdbAvailability:
+        return TmdbAvailability(
+            found=True,
+            title="Special Ops: Lioness",
+            media_type="tv",
+            requested_season_exists=True,
+            season_number=3,
+            season_air_date=date(2026, 8, 10),
+        )
+
+    def fake_search_tvweb(**kwargs) -> list[IboxItem]:
+        if kwargs["query"] == "Lioness":
+            return [
+                IboxItem(
+                    id=91,
+                    title="Lioness",
+                    episode_title="Season 3 Episode 1-4",
+                    category="tv",
+                    slug="lioness-season-3-episode-1-4",
+                    year=2026,
+                    rating=7.8,
+                    download_link=None,
+                )
+            ]
+        return []
+
+    monkeypatch.setattr(pipeline, "resolve_tmdb_availability", fake_resolve_tmdb_availability)
+    monkeypatch.setattr(pipeline, "search_tvweb", fake_search_tvweb)
+
+    with _session() as session:
+        group = repositories.get_or_create_group(
+            session,
+            telegram_chat_id=-1001,
+            title="Series 2022 Requests",
+            chat_type="supergroup",
+            settings=settings,
+        )
+        group.setup_completed = True
+
+        result = await process_group_message(
+            message=message,
+            bot=bot,
+            session=session,
+            settings=settings,
+            permissions=FakePermissions(),
+            sender_is_admin=False,
+        )
+        open_request = session.scalar(select(SupportRequest).where(SupportRequest.status == "open"))
+        request = session.scalar(select(SupportRequest))
+
+    assert result.support_replied
+    assert open_request is None
+    assert request is not None
+    assert request.status == "found"
+    assert request.matched_title == "Lioness - Season 3 Episode 1-4"
+    assert bot.sent
+    assert "Found on ibox-tv.com" in str(bot.sent[0]["text"])
+    assert "Lioness - Season 3 Episode 1-4" in str(bot.sent[0]["text"])
+
+
+async def test_pipeline_ai_log_gate_blocks_uncertain_open_request(monkeypatch) -> None:
+    settings = load_settings(
+        {
+            "AUTHORIZED_CHAT_IDS": "-1001",
+            "DEFAULT_GROUP_MODE": "normal",
+            "AI_PROVIDER": "rules_only",
+            "AI_FALLBACK_PROVIDER": "rules_only",
+            "SUPPORT_ENABLED": "true",
+            "SUPPORT_AI_REPLIES": "false",
+            "SUPPORT_REPLY_CLEANUP_SECONDS": "0",
+            "TVWEB_DATABASE_URL": "postgresql://readonly:pass@example.com:5432/ibox",
+        }
+    )
+    bot = FakeBot()
+    message = FakeMessage(text="Special ops S03")
+
+    async def fake_vet_support_log_with_ai(**kwargs) -> SupportLogVet:
+        return SupportLogVet(
+            action="clarify",
+            confidence=0.86,
+            corrected_title_query="Lioness",
+            reason="The extracted title appears to be an alias or partial title.",
+        )
+
+    monkeypatch.setattr(pipeline, "vet_support_log_with_ai", fake_vet_support_log_with_ai)
+    monkeypatch.setattr(pipeline, "search_tvweb", lambda **kwargs: [])
+
+    with _session() as session:
+        group = repositories.get_or_create_group(
+            session,
+            telegram_chat_id=-1001,
+            title="Series 2022 Requests",
+            chat_type="supergroup",
+            settings=settings,
+        )
+        group.setup_completed = True
+
+        result = await process_group_message(
+            message=message,
+            bot=bot,
+            session=session,
+            settings=settings,
+            permissions=FakePermissions(),
+            sender_is_admin=False,
+        )
+        request = session.scalar(select(SupportRequest))
+
+    assert result.support_replied
+    assert request is None
+    assert bot.sent
+    assert "Quick check" in str(bot.sent[0]["text"])
+    assert "Lioness" in str(bot.sent[0]["text"])
 
 
 async def test_pipeline_ignores_generic_search_engine_phrase() -> None:

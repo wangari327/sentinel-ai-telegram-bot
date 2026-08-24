@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import re
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from typing import Any
 
 import httpx
@@ -19,6 +19,15 @@ from app.support.responder import select_support_chat_config
 KINDS = {"none", "request", "issue", "howto", "release"}
 CATEGORIES = {"movie", "tv", "anime"}
 ISSUE_TYPES = {"broken_link", "missing_episode", "banned", "playback", "general"}
+LOG_VET_ACTIONS = {"log", "retry_search", "clarify", "skip"}
+
+
+@dataclass(frozen=True, slots=True)
+class SupportLogVet:
+    action: str
+    confidence: float
+    corrected_title_query: str | None = None
+    reason: str | None = None
 
 
 async def classify_support_intent_with_ai(
@@ -130,6 +139,51 @@ async def choose_support_merge_candidate_with_ai(
     return _merge_candidate_from_data(data, candidates=trimmed_candidates, settings=settings)
 
 
+async def vet_support_log_with_ai(
+    *,
+    kind: str,
+    text: str,
+    intent: SupportIntent,
+    availability_title: str | None,
+    availability_state: str | None,
+    settings: Settings,
+) -> SupportLogVet | None:
+    if not settings.support_ai_intent_enabled:
+        return None
+    chat_config = select_support_chat_config(settings, require_ai_replies=False)
+    if chat_config is None:
+        return None
+
+    payload: dict[str, Any] = {
+        "model": chat_config.model,
+        "messages": _log_vet_messages(
+            kind=kind,
+            text=text[: settings.support_ai_intent_max_text_chars],
+            intent=intent,
+            availability_title=availability_title,
+            availability_state=availability_state,
+        ),
+        "temperature": 0,
+        "max_tokens": 180,
+    }
+    headers = {"Content-Type": "application/json"}
+    if chat_config.api_key:
+        headers["Authorization"] = f"Bearer {chat_config.api_key}"
+
+    async with httpx.AsyncClient(timeout=chat_config.timeout_seconds) as client:
+        try:
+            response = await client.post(
+                f"{chat_config.base_url}/chat/completions",
+                headers=headers,
+                json=payload,
+            )
+            response.raise_for_status()
+            data = _parse_json(_choice_text(response.json()))
+        except (KeyError, TypeError, ValueError, httpx.HTTPError):
+            return None
+    return _log_vet_from_data(data, settings=settings)
+
+
 def _messages(text: str) -> list[dict[str, str]]:
     return [
         {
@@ -194,6 +248,51 @@ def _merge_messages(
                 f"New item kind={kind}, title_query={title_query}, issue_type={issue_type}\n"
                 f"New message:\n{text}\n\n"
                 f"Existing candidates:\n{json.dumps(candidates, ensure_ascii=False)}"
+            ),
+        },
+    ]
+
+
+def _log_vet_messages(
+    *,
+    kind: str,
+    text: str,
+    intent: SupportIntent,
+    availability_title: str | None,
+    availability_state: str | None,
+) -> list[dict[str, str]]:
+    return [
+        {
+            "role": "system",
+            "content": (
+                "You are the final quality gate before an iBOX TV Telegram bot writes an "
+                "unresolved item to the owner dashboard. Return JSON only. Schema: "
+                '{"action":"log|retry_search|clarify|skip","confidence":0.0,'
+                '"corrected_title_query":null|string,"reason":"short"}. '
+                "Use log only when the user's own message clearly asks for a missing "
+                "movie/show/anime or reports a real issue, and the extracted title is "
+                "probably correct. Use retry_search when the extracted title is probably "
+                "an alias, subtitle, franchise fragment, typo, or parser miss; put the "
+                "best corrected catalog search phrase in corrected_title_query. Use "
+                "clarify when the user intent is real but the title or season context is "
+                "too ambiguous. Use skip for chatter, admin/status/result-list messages, "
+                "or cases that should not create dashboard work. If TMDB gives a canonical "
+                "title that differs from the extracted query, prefer retry_search before "
+                "logging. Do not add items just because search failed."
+            ),
+        },
+        {
+            "role": "user",
+            "content": (
+                f"Kind about to be logged: {kind}\n"
+                f"User message:\n{text}\n\n"
+                "Extracted intent:\n"
+                f"title_query={intent.title_query}, category_hint={intent.category_hint}, "
+                f"issue_type={intent.issue_type}, context_title={intent.context_title}, "
+                f"season_number={intent.season_number}, season_end_number={intent.season_end_number}, "
+                f"episode_number={intent.episode_number}, episode_end_number={intent.episode_end_number}\n\n"
+                f"TMDB canonical title: {availability_title or 'none'}\n"
+                f"TMDB availability state: {availability_state or 'none'}"
             ),
         },
     ]
@@ -301,6 +400,31 @@ def _merge_candidate_from_data(
         int(candidate["id"]) for candidate in candidates if candidate.get("id") is not None
     }
     return selected if selected in valid_ids else None
+
+
+def _log_vet_from_data(data: dict[str, Any], *, settings: Settings) -> SupportLogVet | None:
+    action = str(data.get("action") or "").strip().lower()
+    if action not in LOG_VET_ACTIONS:
+        return None
+    confidence = float(data.get("confidence") or 0)
+    if confidence < 0.55:
+        return None
+    corrected_value = data.get("corrected_title_query")
+    corrected = normalize_title_query(str(corrected_value)) if corrected_value else None
+    if corrected and (len(corrected) < 2 or not support_title_query_is_allowed(corrected)):
+        corrected = None
+    if action == "retry_search" and not corrected:
+        action = "clarify"
+    if action == "log" and confidence < settings.support_ai_intent_threshold:
+        return None
+    reason_value = data.get("reason")
+    reason = str(reason_value).strip()[:220] if reason_value else None
+    return SupportLogVet(
+        action=action,
+        confidence=confidence,
+        corrected_title_query=corrected,
+        reason=reason,
+    )
 
 
 def _choice_text(data: dict[str, Any]) -> str:
