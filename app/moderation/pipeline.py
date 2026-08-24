@@ -106,6 +106,17 @@ def should_call_ai(*, features: object, group_settings: object) -> bool:
     return getattr(features, "risk_signal_count", 0) > 0
 
 
+def is_linked_channel_announcement(message: object) -> bool:
+    if bool(getattr(message, "is_automatic_forward", False)):
+        return True
+    sender_chat = getattr(message, "sender_chat", None)
+    return bool(
+        sender_chat is not None
+        and getattr(sender_chat, "type", None) == "channel"
+        and getattr(message, "from_user", None) is None
+    )
+
+
 async def maybe_handle_support_message(
     *,
     message: object,
@@ -527,6 +538,8 @@ async def process_group_message(
     group_settings = repositories.get_or_create_group_settings(session, group, settings)
     if not repositories.chat_is_authorized(group, settings):
         return PipelineResult(status="skipped_unauthorized_chat")
+    if is_linked_channel_announcement(message):
+        return PipelineResult(status="skipped_linked_channel_announcement")
 
     user = getattr(message, "from_user", None)
     sender_user_id = getattr(user, "id", None)

@@ -37,6 +37,8 @@ class FakeMessage:
     message_id: int = 101
     chat: FakeChat = field(default_factory=FakeChat)
     from_user: FakeUser = field(default_factory=FakeUser)
+    sender_chat: object | None = None
+    is_automatic_forward: bool = False
     caption: str | None = None
     entities: list[object] | None = None
     caption_entities: list[object] | None = None
@@ -186,6 +188,49 @@ async def test_pipeline_deletes_current_adult_story_caption_campaign() -> None:
     assert result.decision is not None
     assert result.decision.action == "delete"
     assert bot.deleted == [(-1001, 101)]
+
+
+async def test_pipeline_skips_linked_channel_catalog_announcements() -> None:
+    settings = load_settings(
+        {
+            "AUTHORIZED_CHAT_IDS": "-1001",
+            "DEFAULT_GROUP_MODE": "normal",
+            "AI_PROVIDER": "rules_only",
+            "AI_FALLBACK_PROVIDER": "rules_only",
+            "SUPPORT_ENABLED": "true",
+        }
+    )
+    bot = FakeBot()
+    message = FakeMessage(
+        text="Lanterns 2026 Season 1 Episode 1-2 CLICK HERE ✔️ New Episode Update🟢",
+        sender_chat=SimpleNamespace(id=-100777, title="iBOX TV", type="channel"),
+        is_automatic_forward=True,
+    )
+
+    with _session() as session:
+        group = repositories.get_or_create_group(
+            session,
+            telegram_chat_id=-1001,
+            title="Series 2022 Requests",
+            chat_type="supergroup",
+            settings=settings,
+        )
+        group.setup_completed = True
+
+        result = await process_group_message(
+            message=message,
+            bot=bot,
+            session=session,
+            settings=settings,
+            permissions=FakePermissions(),
+            sender_is_admin=False,
+        )
+        event = session.scalar(select(ModerationEvent))
+
+    assert result.status == "skipped_linked_channel_announcement"
+    assert event is None
+    assert bot.deleted == []
+    assert bot.sent == []
 
 
 async def test_pipeline_deletes_adult_source_story_when_caption_is_hidden() -> None:
