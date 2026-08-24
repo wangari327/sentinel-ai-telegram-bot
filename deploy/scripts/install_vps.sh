@@ -140,6 +140,8 @@ BOT_TOKEN=${BOT_TOKEN}
 WEBHOOK_BASE_URL=https://${DOMAIN}
 WEBHOOK_SECRET=${WEBHOOK_SECRET}
 AUTO_SET_WEBHOOK=true
+TELEGRAM_WEBHOOK_MAX_CONNECTIONS=10
+TELEGRAM_DROP_PENDING_UPDATES_ON_STARTUP=true
 AUTO_MIGRATE=true
 DEMO_MODE=false
 LOG_LEVEL=INFO
@@ -229,6 +231,18 @@ configure_compose() {
   cp "${APP_DIR}/deploy/vps.docker-compose.yml" "${APP_DIR}/compose.vps.yml"
 }
 
+install_watchdog() {
+  log "Installing health watchdog"
+  as_root chmod +x "${APP_DIR}/deploy/scripts/watchdog_vps.sh"
+  local cron_file="/etc/cron.d/sentinel-ai-watchdog"
+  as_root tee "$cron_file" >/dev/null <<EOF
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+*/2 * * * * root APP_DIR=${APP_DIR} COMPOSE_FILE=compose.vps.yml HEALTH_URL=http://${APP_HOST_PORT}/health ${APP_DIR}/deploy/scripts/watchdog_vps.sh >/dev/null 2>&1
+EOF
+  as_root chmod 644 "$cron_file"
+}
+
 start_stack() {
   log "Building and starting containers"
   cd "$APP_DIR"
@@ -288,6 +302,7 @@ main() {
   clone_or_update_repo
   write_env
   configure_compose
+  install_watchdog
   configure_nginx
   issue_certificate
   start_stack

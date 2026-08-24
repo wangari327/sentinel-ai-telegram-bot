@@ -68,6 +68,8 @@ class Settings:
     webhook_base_url: str
     webhook_secret: str
     auto_set_webhook: bool
+    telegram_webhook_max_connections: int
+    telegram_drop_pending_updates_on_startup: bool
     auto_migrate: bool
     demo_mode: bool
     log_level: str
@@ -177,6 +179,10 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         webhook_base_url=source.get("WEBHOOK_BASE_URL", ""),
         webhook_secret=source.get("WEBHOOK_SECRET", "dev-secret"),
         auto_set_webhook=_bool(source.get("AUTO_SET_WEBHOOK"), True),
+        telegram_webhook_max_connections=_int(source.get("TELEGRAM_WEBHOOK_MAX_CONNECTIONS"), 10),
+        telegram_drop_pending_updates_on_startup=_bool(
+            source.get("TELEGRAM_DROP_PENDING_UPDATES_ON_STARTUP"), True
+        ),
         auto_migrate=_bool(source.get("AUTO_MIGRATE"), True),
         demo_mode=_bool(source.get("DEMO_MODE"), False),
         log_level=source.get("LOG_LEVEL", "INFO"),

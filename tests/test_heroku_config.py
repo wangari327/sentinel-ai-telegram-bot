@@ -23,6 +23,8 @@ def test_heroku_env_config_loading() -> None:
     )
 
     assert settings.webhook_url == "https://example.herokuapp.com/telegram/webhook/secret"
+    assert settings.telegram_webhook_max_connections == 10
+    assert settings.telegram_drop_pending_updates_on_startup
     assert -100123 in settings.authorized_chat_ids
     assert 42 in settings.owner_admin_ids
 
@@ -95,3 +97,5 @@ def test_app_json_is_valid_heroku_button_json() -> None:
     assert data["name"] == "SentinelAI Telegram Anti-Spam Bot"
     assert "BOT_TOKEN" in data["env"]
     assert "AUTHORIZED_CHAT_IDS" in data["env"]
+    assert "TELEGRAM_WEBHOOK_MAX_CONNECTIONS" in data["env"]
+    assert "TELEGRAM_DROP_PENDING_UPDATES_ON_STARTUP" in data["env"]

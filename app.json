@@ -136,6 +136,14 @@
       "description": "Automatically register Telegram webhook on startup.",
       "value": "true"
     },
+    "TELEGRAM_WEBHOOK_MAX_CONNECTIONS": {
+      "description": "Maximum concurrent Telegram webhook deliveries. Lower values prevent outage replay floods.",
+      "value": "10"
+    },
+    "TELEGRAM_DROP_PENDING_UPDATES_ON_STARTUP": {
+      "description": "Drop stale Telegram updates on startup so old offline group messages are not replayed.",
+      "value": "true"
+    },
     "AUTO_MIGRATE": {
       "description": "Automatically run database setup on startup.",
       "value": "true"

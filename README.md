@@ -356,6 +356,7 @@ The installer:
 - proxies Nginx to `127.0.0.1:8010` by default to avoid common port `8000` conflicts
 - requests a Let's Encrypt HTTPS certificate
 - checks `https://antispam.ibox-tv.com/health`
+- installs a lightweight cron watchdog that restarts the bot if local `/health` stops responding
 
 Non-interactive install:
 
@@ -395,6 +396,8 @@ The installer writes these values to `/opt/sentinel-ai-telegram-bot/.env`:
 BOT_TOKEN=
 WEBHOOK_BASE_URL=https://antispam.ibox-tv.com
 WEBHOOK_SECRET=
+TELEGRAM_WEBHOOK_MAX_CONNECTIONS=10
+TELEGRAM_DROP_PENDING_UPDATES_ON_STARTUP=true
 APP_HOST_PORT=127.0.0.1:8010
 AUTHORIZED_CHAT_IDS=-1001303757981,-1002370580254
 OWNER_ADMIN_IDS=762308466
@@ -422,6 +425,8 @@ Do not commit the real `.env`. If an API key or bot token was pasted into chat, 
 For the website integration, paste the website `.env` value named `DATABASE_URL` into `TVWEB_DATABASE_URL`. Sentinel normalizes `postgresql://...` to `postgresql+psycopg://...`, so either prefix is fine. For release and season/episode metadata, paste the website `.env` value named `TMDB_BEARER_TOKEN` into Sentinel as `TMDB_BEARER_TOKEN`; do not use `TMDB_BACKFILL_TOKENS`.
 
 The default Docker Postgres volume survives container rebuilds and repo updates. It does not survive a full VPS reinstall unless you restore a backup. For reinstall-proof bot data, use an external Postgres `DATABASE_URL` or schedule off-VPS `pg_dump` backups; MongoDB is not used by the current Sentinel schema.
+
+`TELEGRAM_DROP_PENDING_UPDATES_ON_STARTUP=true` is intentional for this moderation bot. If the VPS is down for a while, Telegram may queue hundreds of old group messages. Dropping pending updates on restart prevents Sentinel from replaying stale chat history, spamming users, and burning AI quota. `TELEGRAM_WEBHOOK_MAX_CONNECTIONS=10` also keeps Telegram from flooding the app immediately after downtime.
 
 ### VPS Operations
 
@@ -453,6 +458,10 @@ If `/ping` works in private but ordinary group messages are silent, send `/debug
 group. If slash commands work but normal group messages never create group-result logs, disable
 BotFather privacy mode for the bot with BotFather's `/setprivacy` command. Also confirm the bot is
 an admin with delete permission and that the group is authorized.
+
+The VPS installer also creates `/etc/cron.d/sentinel-ai-watchdog`. Every two minutes it checks
+`http://127.0.0.1:8010/health`; if the endpoint fails, it restarts only the bot container and logs
+the event with the `sentinel-ai-watchdog` tag.
 
 Restart:
 

@@ -45,8 +45,16 @@ async def set_webhook_if_enabled(bot_instance: Bot) -> None:
         logger.warning("AUTO_SET_WEBHOOK is true but WEBHOOK_BASE_URL is empty")
         return
     try:
-        await bot_instance.set_webhook(settings.webhook_url, drop_pending_updates=False)
-        logger.info("Telegram webhook registered")
+        await bot_instance.set_webhook(
+            settings.webhook_url,
+            drop_pending_updates=settings.telegram_drop_pending_updates_on_startup,
+            max_connections=settings.telegram_webhook_max_connections,
+        )
+        logger.info(
+            "Telegram webhook registered max_connections=%s drop_pending_updates=%s",
+            settings.telegram_webhook_max_connections,
+            settings.telegram_drop_pending_updates_on_startup,
+        )
     except TelegramAPIError:
         logger.exception("Telegram webhook registration failed")
 
