@@ -52,8 +52,10 @@ Use `LEAVE_UNAUTHORIZED_CHATS=true` if you want the bot to leave groups it was a
 - `/start` - setup hint in private or group.
 - `/help` - command summary.
 - `/panel` - owner-only private button console.
+- `/ping` - plain liveness check; useful when Telegram goes quiet.
 - `/setup` - verify permissions and activate authorized group setup.
 - `/status` - show authorization, mode, setup, and example counts.
+- `/debug_group` - admin-only group diagnostics for authorization, mode, and bot permissions.
 - `/mode` - change between `normal`, `auto_delete`, `silent`, `monitor_only`, and `aggressive`.
 - `/thresholds` - show group thresholds.
 - `/train` - explain private forwarding/training.
@@ -429,6 +431,28 @@ View logs:
 cd /opt/sentinel-ai-telegram-bot
 docker compose -f compose.vps.yml logs -f bot
 ```
+
+Fast silence check:
+
+```bash
+cd /opt/sentinel-ai-telegram-bot
+docker compose -f compose.vps.yml ps
+curl -sS https://antispam.ibox-tv.com/health
+BOT_TOKEN="$(grep -m1 '^BOT_TOKEN=' .env | cut -d= -f2- | tr -d '\r')"
+curl -sS "https://api.telegram.org/bot${BOT_TOKEN}/getMe"
+curl -sS "https://api.telegram.org/bot${BOT_TOKEN}/getWebhookInfo"
+docker compose -f compose.vps.yml logs --tail=200 bot
+```
+
+Then send `/ping` to the bot in private chat and watch the logs. If `/ping` does not create a
+`Telegram webhook update received` line, Telegram is not reaching this app instance. Check
+`getWebhookInfo.last_error_message`, DNS/HTTPS, Nginx, and whether the webhook URL points to
+`https://antispam.ibox-tv.com/telegram/webhook/<WEBHOOK_SECRET>`.
+
+If `/ping` works in private but ordinary group messages are silent, send `/debug_group` in the
+group. If slash commands work but normal group messages never create group-result logs, disable
+BotFather privacy mode for the bot with BotFather's `/setprivacy` command. Also confirm the bot is
+an admin with delete permission and that the group is authorized.
 
 Restart:
 

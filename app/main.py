@@ -103,6 +103,12 @@ async def telegram_webhook(secret: str, request: Request) -> dict[str, bool]:
     if bot is None or dispatcher is None:
         raise HTTPException(status_code=503, detail="bot is not configured")
     payload = await request.json()
+    logger.info(
+        "Telegram webhook update received update_id=%s type=%s chat_id=%s",
+        payload.get("update_id", "unknown"),
+        _telegram_update_type(payload),
+        _telegram_payload_chat_id(payload),
+    )
     handled = await dispatch_telegram_update_safely(
         payload=payload,
         bot_instance=bot,
@@ -125,6 +131,40 @@ async def dispatch_telegram_update_safely(
         logger.exception("Telegram update failed and was acknowledged: update_id=%s", update_id)
         return False
     return True
+
+
+def _telegram_update_type(payload: dict[str, Any]) -> str:
+    for key in (
+        "message",
+        "edited_message",
+        "channel_post",
+        "edited_channel_post",
+        "callback_query",
+        "inline_query",
+        "my_chat_member",
+        "chat_member",
+    ):
+        if key in payload:
+            return key
+    return "unknown"
+
+
+def _telegram_payload_chat_id(payload: dict[str, Any]) -> int | str | None:
+    update_type = _telegram_update_type(payload)
+    update = payload.get(update_type)
+    if not isinstance(update, dict):
+        return None
+    if update_type == "callback_query":
+        message = update.get("message")
+        if isinstance(message, dict):
+            chat = message.get("chat")
+            if isinstance(chat, dict):
+                return chat.get("id")
+        return None
+    chat = update.get("chat")
+    if isinstance(chat, dict):
+        return chat.get("id")
+    return None
 
 
 async def run_polling() -> None:

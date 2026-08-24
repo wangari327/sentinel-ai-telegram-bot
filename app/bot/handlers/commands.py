@@ -13,10 +13,12 @@ from app.config import settings
 from app.db import repositories
 from app.db.models import Domain, GroupSettings
 from app.db.session import session_scope
+from app.logging import get_logger
 from app.support.private_assistant import private_user_help_text
 
 router = Router(name="commands")
 MODES = {"normal", "auto_delete", "silent", "monitor_only", "aggressive"}
+logger = get_logger(__name__)
 
 
 def _target_group_id(message: Message) -> int:
@@ -31,6 +33,74 @@ def _mode_updates(mode_value: str) -> dict[str, object]:
     }
 
 
+def _yes_no(value: object) -> str:
+    return "yes" if bool(value) else "no"
+
+
+def _permission_lines(permissions: object) -> list[str]:
+    return [
+        f"Bot admin: {_yes_no(getattr(permissions, 'is_admin', False))}",
+        f"Can delete messages: {_yes_no(getattr(permissions, 'can_delete_messages', False))}",
+        f"Can restrict/ban users: {_yes_no(getattr(permissions, 'can_restrict_members', False))}",
+        f"Raw Telegram status: {getattr(permissions, 'raw_status', None) or 'unknown'}",
+    ]
+
+
+def group_debug_text(
+    *,
+    chat_id: int,
+    chat_title: str | None,
+    authorized: bool,
+    allowlisted: bool,
+    group_authorized: bool,
+    setup_completed: bool,
+    group_settings: object,
+    permissions: object,
+    permission_warning: str | None,
+    admin_user_id: int | None,
+) -> str:
+    lines = [
+        "SentinelAI group diagnostics",
+        f"Chat ID: {chat_id}",
+        f"Title: {chat_title or '(none)'}",
+        f"Command admin ID: {admin_user_id or 'unknown'}",
+        "",
+        "Authorization",
+        f"Authorized now: {_yes_no(authorized)}",
+        f"In AUTHORIZED_CHAT_IDS: {_yes_no(allowlisted)}",
+        f"DB authorized: {_yes_no(group_authorized)}",
+        f"Setup completed: {_yes_no(setup_completed)}",
+        "",
+        "Group mode",
+        f"Mode: {getattr(group_settings, 'mode', 'unknown')}",
+        f"Auto-delete: {_yes_no(getattr(group_settings, 'auto_delete_enabled', False))}",
+        f"Silent: {_yes_no(getattr(group_settings, 'silent_enabled', False))}",
+        f"Auto-ban: {_yes_no(getattr(group_settings, 'ban_enabled', False))}",
+        f"Scan admins: {_yes_no(getattr(group_settings, 'scan_admins', False))}",
+        f"AI scan all messages: {_yes_no(getattr(group_settings, 'ai_scan_all_messages', False))}",
+        f"AI links only: {_yes_no(getattr(group_settings, 'ai_scan_links_only', False))}",
+        "",
+        "Permissions",
+        *_permission_lines(permissions),
+    ]
+    if getattr(permissions, "error", None):
+        lines.append(f"Permission lookup error: {permissions.error}")
+    if permission_warning:
+        lines.append(f"Permission warning: {permission_warning}")
+    lines.extend(
+        [
+            "",
+            "Delivery test",
+            (
+                "If /ping or /debug_group works but normal group messages never create log "
+                "lines, disable BotFather privacy mode for this bot."
+            ),
+            "If even /ping is silent in DM, check Docker, /health, and Telegram getWebhookInfo.",
+        ]
+    )
+    return "\n".join(lines)
+
+
 async def _require_admin(message: Message) -> bool:
     if message.chat.type == "private":
         return True
@@ -39,7 +109,9 @@ async def _require_admin(message: Message) -> bool:
         message.chat.id,
         message.from_user.id if message.from_user else None,
     )
-    if not is_admin and not settings.user_is_owner_admin(message.from_user.id if message.from_user else None):
+    if not is_admin and not settings.user_is_owner_admin(
+        message.from_user.id if message.from_user else None
+    ):
         await message.reply("Only group admins can use this command.")
         return False
     return True
@@ -47,8 +119,16 @@ async def _require_admin(message: Message) -> bool:
 
 @router.message(Command("start"))
 async def start(message: Message) -> None:
+    user_id = message.from_user.id if message.from_user else None
+    logger.info(
+        "Start command received chat_id=%s chat_type=%s user_id=%s is_owner=%s",
+        message.chat.id,
+        message.chat.type,
+        user_id,
+        settings.user_is_owner_admin(user_id),
+    )
     if message.chat.type == "private":
-        if settings.user_is_owner_admin(message.from_user.id if message.from_user else None):
+        if settings.user_is_owner_admin(user_id):
             with session_scope() as session:
                 await send_flow_message(
                     bot=message.bot,
@@ -74,6 +154,21 @@ async def start(message: Message) -> None:
     await setup(message)
 
 
+@router.message(Command("ping"))
+async def ping(message: Message) -> None:
+    user_id = message.from_user.id if message.from_user else None
+    logger.info(
+        "Ping command received chat_id=%s chat_type=%s user_id=%s",
+        message.chat.id,
+        message.chat.type,
+        user_id,
+    )
+    await message.answer(
+        "pong - SentinelAI is receiving Telegram updates on this bot instance.",
+        parse_mode=None,
+    )
+
+
 @router.message(Command("help"))
 async def help_command(message: Message) -> None:
     if message.chat.type == "private" and not settings.user_is_owner_admin(
@@ -93,7 +188,7 @@ async def help_command(message: Message) -> None:
     await message.answer(
         "Commands: /setup, /status, /mode, /thresholds, /train, /examples, "
         "/trust, /untrust, /ban, /ban_on, /ban_off, /allowdomain, /blockdomain, "
-        "/domains, /privacy. "
+        "/domains, /debug_group, /ping, /privacy. "
         "The bot only moderates authorized chats."
     )
 
@@ -141,6 +236,43 @@ async def setup(message: Message) -> None:
             "Setup complete. This chat is authorized and protected. "
             "Fresh deployments start in monitor-only mode; use /mode when ready."
         )
+
+
+@router.message(Command("debug_group"))
+async def debug_group(message: Message) -> None:
+    if message.chat.type == "private":
+        await message.answer(
+            "DM delivery is alive. Run /debug_group inside the group to inspect group mode, "
+            "authorization, and Telegram admin permissions.",
+            parse_mode=None,
+        )
+        return
+    if not await _require_admin(message):
+        return
+    permissions = await get_bot_permissions(message.bot, message.chat.id)
+    warning = permissions_warning(permissions)
+    with session_scope() as session:
+        group = repositories.get_or_create_group(
+            session,
+            telegram_chat_id=message.chat.id,
+            title=message.chat.title,
+            chat_type=message.chat.type,
+            settings=settings,
+        )
+        group_settings = repositories.get_or_create_group_settings(session, group, settings)
+        text = group_debug_text(
+            chat_id=message.chat.id,
+            chat_title=message.chat.title,
+            authorized=repositories.chat_is_authorized(group, settings),
+            allowlisted=message.chat.id in settings.authorized_chat_ids,
+            group_authorized=group.authorized,
+            setup_completed=group.setup_completed,
+            group_settings=group_settings,
+            permissions=permissions,
+            permission_warning=warning,
+            admin_user_id=message.from_user.id if message.from_user else None,
+        )
+    await message.reply(text, parse_mode=None)
 
 
 @router.message(Command("status"))
@@ -193,7 +325,9 @@ async def mode(message: Message) -> None:
             settings=settings,
         )
         if not repositories.chat_is_authorized(group, settings):
-            await message.reply("This chat is not authorized. Run /setup first with an authorized admin.")
+            await message.reply(
+                "This chat is not authorized. Run /setup first with an authorized admin."
+            )
             return
         group_settings = repositories.get_or_create_group_settings(session, group, settings)
         if requested_mode:
@@ -338,7 +472,9 @@ async def _domain_command(message: Message, status_value: str) -> None:
             chat_type=message.chat.type,
             settings=settings,
         )
-        repositories.set_domain_status(session, group.id, domain, status_value, message.from_user.id)
+        repositories.set_domain_status(
+            session, group.id, domain, status_value, message.from_user.id
+        )
     await message.reply(f"Domain {domain} marked {status_value}.")
 
 
@@ -355,9 +491,7 @@ async def domains(message: Message) -> None:
             settings=settings,
         )
         rows = session.execute(
-            select(Domain.domain, Domain.status)
-            .where(Domain.group_id == group.id)
-            .limit(50)
+            select(Domain.domain, Domain.status).where(Domain.group_id == group.id).limit(50)
         ).all()
     if not rows:
         await message.reply("No domain rules configured.")
@@ -492,7 +626,9 @@ async def forget_group_data(message: Message) -> None:
     if message.chat.type == "private" or not await _require_admin(message):
         return
     if "CONFIRM" not in (message.text or ""):
-        await message.reply("This deletes stored group data. Run /forget_group_data CONFIRM to proceed.")
+        await message.reply(
+            "This deletes stored group data. Run /forget_group_data CONFIRM to proceed."
+        )
         return
     with session_scope() as session:
         group = repositories.get_or_create_group(
