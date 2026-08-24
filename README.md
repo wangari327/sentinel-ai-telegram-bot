@@ -347,6 +347,7 @@ bash deploy/scripts/install_vps.sh
 The installer:
 
 - installs Git, Docker, Nginx, Certbot, and required system packages
+- creates a small swap file on tiny VPS instances if no swap is configured
 - clones or updates this repository into `/opt/sentinel-ai-telegram-bot`
 - prompts for `BOT_TOKEN` and `HCNSEC_API_KEY`
 - writes `/opt/sentinel-ai-telegram-bot/.env`

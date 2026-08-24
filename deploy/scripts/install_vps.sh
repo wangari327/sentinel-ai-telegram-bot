@@ -9,6 +9,7 @@ EMAIL="${LETSENCRYPT_EMAIL:-}"
 SKIP_CERTBOT="${SKIP_CERTBOT:-false}"
 FORCE_ENV="${FORCE_ENV:-false}"
 APP_HOST_PORT="${APP_HOST_PORT:-127.0.0.1:8010}"
+SENTINEL_SWAP_SIZE="${SENTINEL_SWAP_SIZE:-1G}"
 
 log() {
   printf '\n[%s] %s\n' "$(date +'%H:%M:%S')" "$*"
@@ -98,6 +99,23 @@ install_packages() {
   fi
 
   as_root systemctl enable --now docker
+}
+
+ensure_swap() {
+  if swapon --show | grep -q .; then
+    log "Swap is already configured"
+    return
+  fi
+  log "Creating ${SENTINEL_SWAP_SIZE} swap file to reduce OOM restarts"
+  as_root fallocate -l "$SENTINEL_SWAP_SIZE" /swapfile
+  as_root chmod 600 /swapfile
+  as_root mkswap /swapfile >/dev/null
+  as_root swapon /swapfile
+  if ! grep -q '^/swapfile ' /etc/fstab; then
+    printf '/swapfile none swap sw 0 0\n' | as_root tee -a /etc/fstab >/dev/null
+  fi
+  printf 'vm.swappiness=20\n' | as_root tee /etc/sysctl.d/99-sentinel-ai-swap.conf >/dev/null
+  as_root sysctl -p /etc/sysctl.d/99-sentinel-ai-swap.conf >/dev/null
 }
 
 clone_or_update_repo() {
@@ -299,6 +317,7 @@ health_check() {
 main() {
   [[ "$(uname -s)" == "Linux" ]] || die "Run this script on the Ubuntu VPS"
   install_packages
+  ensure_swap
   clone_or_update_repo
   write_env
   configure_compose

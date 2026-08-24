@@ -18,6 +18,9 @@ def test_install_script_uses_expected_domain_and_keeps_existing_env() -> None:
     assert "FORCE_ENV=true" in script
     assert 'APP_HOST_PORT="${APP_HOST_PORT:-127.0.0.1:8010}"' in script
     assert "docker compose -f compose.vps.yml up -d --build" in script
+    assert 'SENTINEL_SWAP_SIZE="${SENTINEL_SWAP_SIZE:-1G}"' in script
+    assert "ensure_swap" in script
+    assert "vm.swappiness=20" in script
     assert "install_watchdog" in script
     assert "TELEGRAM_DROP_PENDING_UPDATES_ON_STARTUP=true" in script
     assert "prompt_optional TVWEB_DATABASE_URL" in script
