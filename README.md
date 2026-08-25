@@ -12,7 +12,7 @@ Fresh deployments are deliberately conservative.
 - `setup_completed=false` until `/setup` confirms bot admin permissions.
 - `REQUIRE_AUTHORIZED_CHATS=true` by default.
 - The bot only works in authorized chats.
-- Ban mode is disabled until an admin enables it in group settings.
+- Immediate single-message ban mode is disabled until an admin enables it in group settings.
 - `DEMO_MODE=true` prevents delete/ban actions and reports what would happen.
 
 ## Authorized Chats Only
@@ -92,7 +92,7 @@ Private owner controls:
 - `silent`: delete high-confidence spam without admin notifications.
 - `aggressive`: temporarily delete borderline suspicious content pending review.
 
-Automatic bans are controlled separately from mode. Use `/ban_on` only after the bot has ban/restrict permission and you are comfortable with detections. Use `/ban_off` to keep deleting spam without banning users.
+Immediate high-risk bans are controlled separately from mode. Use `/ban_on` only after the bot has ban/restrict permission and you are comfortable with one-message ban decisions. Use `/ban_off` to keep immediate high-risk detections at delete-only.
 
 When Sentinel successfully deletes spam, it can post a short group notice saying the message was neutralized and warning that repeat spam leads to a ban. `SPAM_REPEAT_BAN_AFTER=2` means the second confirmed spam deletion from the same user in the same group escalates to a ban when the bot has ban/restrict permission. Set `SPAM_REPEAT_BAN_AFTER=0` to disable repeat-strike bans. `MODERATION_DELETE_NOTICE_ENABLED=true` controls the notice, and `MODERATION_NOTICE_CLEANUP_SECONDS=86400` makes Sentinel clean up that notice after one day. Silent mode suppresses these notices.
 
