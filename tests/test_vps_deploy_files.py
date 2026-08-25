@@ -8,6 +8,9 @@ def test_vps_compose_builds_from_repo_root() -> None:
     assert '"${APP_HOST_PORT:-127.0.0.1:8010}:8000"' in compose
     assert "healthcheck:" in compose
     assert "http://127.0.0.1:8000/health" in compose
+    assert "condition: service_healthy" in compose
+    assert "pg_isready -U sentinel -d sentinel" in compose
+    assert "redis-cli ping" in compose
 
 
 def test_install_script_uses_expected_domain_and_keeps_existing_env() -> None:
