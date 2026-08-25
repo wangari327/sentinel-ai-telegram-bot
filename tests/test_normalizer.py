@@ -33,3 +33,19 @@ def test_forwarded_story_metadata_is_preserved_for_moderation() -> None:
 
     assert "forwarded_telegram_story" in normalized.content_flags
     assert "Forwarded Telegram story from Wet Dreams" in normalized.text
+
+
+def test_forwarded_message_metadata_is_preserved_for_moderation() -> None:
+    message = SimpleNamespace(
+        text="Need a fuckmate anyone",
+        caption=None,
+        entities=None,
+        caption_entities=None,
+        story=None,
+        forward_origin=SimpleNamespace(sender_user=SimpleNamespace(username="Mishel")),
+    )
+
+    normalized = normalize_telegram_message(message)
+
+    assert "forwarded_telegram_message" in normalized.content_flags
+    assert "Forwarded Telegram message from Mishel" in normalized.text

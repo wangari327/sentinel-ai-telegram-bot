@@ -45,7 +45,25 @@ def test_video_call_nudes_solicitation_is_high_risk_without_link() -> None:
     features = extract_features(normalized)
 
     assert features.contains_porn_bait
+    assert features.contains_sexual_solicitation
     assert features.contains_suspicious_adult_story_lure
+
+
+def test_sexual_partner_solicitation_is_high_risk_without_link() -> None:
+    normalized = normalize_message_parts(text="Need a fuckmate anyone")
+    features = extract_features(normalized)
+
+    assert features.contains_sexual_solicitation
+    assert features.contains_porn_bait
+    assert features.contains_suspicious_adult_story_lure
+
+
+def test_private_content_solicitation_is_flagged_without_link() -> None:
+    normalized = normalize_message_parts(text="Dm me. I have it")
+    features = extract_features(normalized)
+
+    assert features.contains_private_solicitation
+    assert not features.contains_suspicious_adult_story_lure
 
 
 def test_adult_source_forwarded_story_is_high_risk_even_when_caption_hidden() -> None:
@@ -59,6 +77,18 @@ def test_adult_source_forwarded_story_is_high_risk_even_when_caption_hidden() ->
     assert features.contains_porn_bait
     assert features.contains_suspicious_adult_story_lure
     assert features.high_risk_link
+
+
+def test_adult_source_forwarded_message_is_high_risk_even_when_caption_hidden() -> None:
+    normalized = normalize_message_parts(
+        metadata_text="Forwarded Telegram message from Wet Dreams",
+        content_flags=["forwarded_telegram_message"],
+    )
+    features = extract_features(normalized)
+
+    assert features.contains_forwarded_message
+    assert features.contains_porn_bait
+    assert features.contains_suspicious_adult_story_lure
 
 
 def test_link_expiry_adult_lure_is_high_risk() -> None:
@@ -85,6 +115,21 @@ def test_short_harmless_reply_is_not_adult_spam() -> None:
         assert not features.contains_adult_spam_cta
         assert not features.contains_suspicious_adult_story_lure
         assert not features.high_risk_link
+
+
+def test_normal_words_are_not_obfuscation_noise() -> None:
+    normalized = normalize_message_parts(text="I am a boy asking for Avatar")
+    features = extract_features(normalized)
+
+    assert not features.contains_obfuscated_text
+
+
+def test_separated_letters_are_obfuscation_signal() -> None:
+    normalized = normalize_message_parts(text="s e x video")
+    features = extract_features(normalized)
+
+    assert features.contains_obfuscated_text
+    assert features.contains_porn_bait
 
 
 def test_blocked_domain_is_flagged() -> None:

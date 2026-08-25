@@ -157,6 +157,10 @@ def normalize_telegram_message(message: object) -> NormalizedMessage:
             metadata_parts.append(f"Forwarded Telegram story from {story_source}")
         else:
             metadata_parts.append("Forwarded Telegram story")
+    forward_source = _forward_source_label(message)
+    if forward_source:
+        content_flags.append("forwarded_telegram_message")
+        metadata_parts.append(f"Forwarded Telegram message from {forward_source}")
     return normalize_message_parts(
         text=getattr(message, "text", None),
         caption=getattr(message, "caption", None),
@@ -172,6 +176,49 @@ def _chat_label(chat: object | None) -> str | None:
         return None
     for field in ("title", "username", "full_name", "first_name"):
         value = getattr(chat, field, None)
+        if value:
+            return str(value)
+    return None
+
+
+def _forward_source_label(message: object) -> str | None:
+    origin = getattr(message, "forward_origin", None)
+    if origin is not None:
+        sender_user = getattr(origin, "sender_user", None)
+        if sender_user is not None:
+            label = _user_label(sender_user)
+            if label:
+                return label
+        chat = getattr(origin, "chat", None)
+        label = _chat_label(chat)
+        if label:
+            return label
+        sender_name = getattr(origin, "sender_user_name", None) or getattr(
+            origin, "sender_name", None
+        )
+        if sender_name:
+            return str(sender_name)
+
+    forwarded_user = getattr(message, "forward_from", None)
+    if forwarded_user is not None:
+        label = _user_label(forwarded_user)
+        if label:
+            return label
+    forwarded_chat = getattr(message, "forward_from_chat", None)
+    label = _chat_label(forwarded_chat)
+    if label:
+        return label
+    sender_name = getattr(message, "forward_sender_name", None)
+    if sender_name:
+        return str(sender_name)
+    return None
+
+
+def _user_label(user: object | None) -> str | None:
+    if user is None:
+        return None
+    for field in ("username", "full_name", "first_name"):
+        value = getattr(user, field, None)
         if value:
             return str(value)
     return None

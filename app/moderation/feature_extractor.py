@@ -76,11 +76,14 @@ class MessageFeatures:
     contains_bot_start_link: bool
     contains_invite_link: bool
     contains_forwarded_story: bool
+    contains_forwarded_message: bool
     contains_shortener: bool
     contains_porn_bait: bool
+    contains_sexual_solicitation: bool
     contains_adult_spam_cta: bool
     contains_urgency_lure: bool
     contains_suspicious_adult_story_lure: bool
+    contains_private_solicitation: bool
     contains_crypto_scam: bool
     contains_fake_reward: bool
     contains_telegram_login_phishing_language: bool
@@ -133,7 +136,38 @@ def extract_features(
         for link in normalized.telegram_links
     )
     contains_forwarded_story = "forwarded_telegram_story" in normalized.content_flags
+    contains_forwarded_message = "forwarded_telegram_message" in normalized.content_flags
     contains_shortener = any(domain in SHORTENER_DOMAINS for domain in normalized.domains)
+
+    sexual_solicitation_patterns = [
+        r"\bneed\s+(?:a\s+)?(?:fuck\s*mate|f\s*ck\s*mate|sex\s+partner|hookup)\b",
+        r"\b(?:fuck\s*mate|f\s*ck\s*mate|sex\s+partner|hookup)\b.{0,50}\b(?:anyone|any\s*one|online|dm|pm|available)\b",
+        r"\b(?:anyone|any\s*one)\b.{0,50}\b(?:fuck\s*mate|f\s*ck\s*mate|sex|hookup|horny)\b",
+        r"\b(?:nudes?|sex|horny)\b.{0,50}\b(?:anyone|any\s*one|online|available|dm|pm)\b",
+        r"\b(?:video\s+call|vc)\b.{0,50}\b(?:nudes?|sex|horny|xxx)\b",
+        r"\b(?:smash|hook\s*up)\b.{0,50}\b(?:video\s+call|nudes?|sex|horny)\b",
+    ]
+    contains_sexual_solicitation = any(
+        re.search(pattern, deobfuscated) for pattern in sexual_solicitation_patterns
+    )
+    contains_sexual_solicitation = contains_sexual_solicitation or any(
+        term in compact
+        for term in (
+            "needafuckmate",
+            "needfckmate",
+            "fuckmateanyone",
+            "fuckmateonline",
+            "fckmateanyone",
+            "fckmateonline",
+            "sexpartneranyone",
+            "hookupanyone",
+            "anyonehorny",
+            "nudesanyoneonline",
+            "nudesonline",
+            "videocallnudes",
+            "videocallsex",
+        )
+    )
 
     porn_patterns = [
         r"free\s+porn",
@@ -166,12 +200,17 @@ def extract_features(
             "instagramgirlgotexposed",
             "hotinstagramgirl",
             "ridingcock",
+            "sexvideo",
+            "explicitvideo",
             "videocallnudes",
             "videocallsex",
             "nudesanyoneonline",
             "nudesonline",
+            "needafuckmate",
+            "fuckmateanyone",
         )
     )
+    contains_porn_bait = contains_porn_bait or contains_sexual_solicitation
 
     adult_lure_patterns = [
         r"\b(?:xxx|nsfw|onlyfans)\b",
@@ -222,11 +261,35 @@ def extract_features(
             "stepsis",
             "gymgirl",
             "nudes",
+            "sexvideo",
+            "explicitvideo",
             "videocallnudes",
             "videocallsex",
             "nudesanyoneonline",
             "nudesonline",
+            "needafuckmate",
+            "fuckmateanyone",
+            "fckmateanyone",
         )
+    )
+    adult_lure = adult_lure or contains_sexual_solicitation
+
+    private_solicitation_patterns = [
+        (
+            r"\b(?:dm|pm|inbox|message|msg|text|contact)\s+(?:me|my)\b.{0,70}"
+            r"\b(?:i\s+have\s+it|have\s+it|got\s+it|have\s+the\s+(?:link|file|episode|"
+            r"season|movie|series|show)|send\s+it|share\s+it)\b"
+        ),
+        (
+            r"\b(?:i\s+have\s+it|got\s+it|have\s+the\s+(?:link|file|episode|season|movie|"
+            r"series|show)|can\s+send\s+it)\b.{0,70}"
+            r"\b(?:dm|pm|inbox|message|msg|text|contact)\s+(?:me|my)\b"
+        ),
+        r"\b(?:dm|pm|inbox|message|msg|text|contact)\s+me\s+(?:for|if\s+you\s+need)\s+(?:link|file|it)\b",
+        r"\b(?:send|drop)\s+me\s+(?:a\s+)?(?:dm|pm)\b.{0,40}\b(?:link|file|it)\b",
+    ]
+    contains_private_solicitation = any(
+        re.search(pattern, deobfuscated) for pattern in private_solicitation_patterns
     )
 
     cta_patterns = [
@@ -269,6 +332,7 @@ def extract_features(
         or contains_bot_start_link
         or contains_porn_bait
         or contains_forwarded_story
+        or contains_forwarded_message
     )
     contains_porn_bait = contains_porn_bait or contains_suspicious_adult_story_lure
 
@@ -307,7 +371,8 @@ def extract_features(
     emoji_count = len(EMOJI_RE.findall(text))
     contains_many_emojis = emoji_count >= 10
     contains_obfuscated_text = normalized.suspicious_unicode_count > 0 or bool(
-        re.search(r"[a-z][._\-* ]{1,3}[a-z][._\-* ]{1,3}[a-z]", lower)
+        re.search(r"(?<!\w)[a-z](?:[._\-*]+[a-z]){2,}(?!\w)", lower)
+        or re.search(r"(?<!\w)(?:[a-z][\s._\-*]+){2,}[a-z](?!\w)", lower)
     )
     contains_zero_width_chars = normalized.zero_width_count > 0
     excessive_mentions = len(re.findall(r"@[A-Za-z0-9_]{3,}", text)) >= 5
@@ -348,11 +413,14 @@ def extract_features(
         contains_bot_start_link,
         contains_invite_link,
         contains_forwarded_story,
+        contains_forwarded_message,
         contains_shortener,
         contains_porn_bait,
+        contains_sexual_solicitation,
         contains_adult_spam_cta,
         contains_urgency_lure,
         contains_suspicious_adult_story_lure,
+        contains_private_solicitation,
         contains_crypto_scam,
         contains_fake_reward,
         contains_login_phishing,
@@ -374,11 +442,14 @@ def extract_features(
         contains_bot_start_link=contains_bot_start_link,
         contains_invite_link=contains_invite_link,
         contains_forwarded_story=contains_forwarded_story,
+        contains_forwarded_message=contains_forwarded_message,
         contains_shortener=contains_shortener,
         contains_porn_bait=contains_porn_bait,
+        contains_sexual_solicitation=contains_sexual_solicitation,
         contains_adult_spam_cta=contains_adult_spam_cta,
         contains_urgency_lure=contains_urgency_lure,
         contains_suspicious_adult_story_lure=contains_suspicious_adult_story_lure,
+        contains_private_solicitation=contains_private_solicitation,
         contains_crypto_scam=contains_crypto_scam,
         contains_fake_reward=contains_fake_reward,
         contains_telegram_login_phishing_language=contains_login_phishing,

@@ -125,8 +125,10 @@ def should_call_ai(*, features: object, group_settings: object) -> bool:
         getattr(features, field, False)
         for field in (
             "contains_porn_bait",
+            "contains_sexual_solicitation",
             "contains_adult_spam_cta",
             "contains_suspicious_adult_story_lure",
+            "contains_private_solicitation",
             "contains_crypto_scam",
             "contains_fake_reward",
             "contains_telegram_login_phishing_language",

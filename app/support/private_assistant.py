@@ -118,8 +118,10 @@ def classify_private_safety(
         reasons.append("unsupported private media")
     if (
         features.high_risk_link
+        or features.contains_sexual_solicitation
         or features.contains_adult_spam_cta
         or features.contains_suspicious_adult_story_lure
+        or features.contains_private_solicitation
         or features.contains_crypto_scam
         or features.contains_fake_reward
         or features.contains_telegram_login_phishing_language

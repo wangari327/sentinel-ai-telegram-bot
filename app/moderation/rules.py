@@ -26,11 +26,14 @@ def compute_rule_score(features: MessageFeatures) -> RuleScore:
         "contains_bot_start_link": (0.42, "Telegram bot start link"),
         "contains_invite_link": (0.34, "Telegram invite link"),
         "contains_forwarded_story": (0.18, "forwarded Telegram story"),
+        "contains_forwarded_message": (0.08, "forwarded Telegram message"),
         "contains_shortener": (0.22, "shortened URL"),
         "contains_porn_bait": (0.44, "porn-bait wording"),
+        "contains_sexual_solicitation": (0.54, "sexual solicitation"),
         "contains_adult_spam_cta": (0.38, "adult spam call-to-action"),
         "contains_urgency_lure": (0.24, "urgent watch/expiry lure"),
         "contains_suspicious_adult_story_lure": (0.35, "adult clickbait story lure"),
+        "contains_private_solicitation": (0.62, "private message content solicitation"),
         "contains_crypto_scam": (0.40, "crypto scam wording"),
         "contains_fake_reward": (0.34, "fake reward wording"),
         "contains_telegram_login_phishing_language": (0.46, "login phishing wording"),
@@ -77,6 +80,14 @@ def compute_rule_score(features: MessageFeatures) -> RuleScore:
     if features.contains_suspicious_adult_story_lure and features.contains_porn_bait:
         score = max(score, 0.96)
         reasons.append("explicit adult clickbait story")
+
+    if features.contains_sexual_solicitation:
+        score = max(score, 0.96)
+        reasons.append("explicit sexual solicitation")
+
+    if features.contains_private_solicitation:
+        score = max(score, 0.96)
+        reasons.append("private off-platform content solicitation")
 
     if features.high_risk_link and score < 0.72:
         score = max(score, 0.72)

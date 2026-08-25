@@ -62,6 +62,10 @@ def combine_scores(
         score = max(score, 0.90)
     if features.contains_suspicious_adult_story_lure and features.contains_porn_bait:
         score = max(score, 0.91)
+    if features.contains_sexual_solicitation:
+        score = max(score, 0.92)
+    if features.contains_private_solicitation and ai_result.label in {"spam", "suspicious"}:
+        score = max(score, 0.90)
     if features.sender_trusted and not features.high_risk_link:
         score = min(score, 0.42)
     if features.sender_admin:
@@ -141,8 +145,13 @@ def decide_action(
         and features.contains_porn_bait
         and score.final_score >= delete_threshold
     )
+    explicit_private_solicitation_delete = bool(
+        features.contains_private_solicitation and score.final_score >= delete_threshold
+    )
     if score.final_score >= delete_threshold and (
-        ai_result.label in {"spam", "suspicious"} or explicit_adult_rule_delete
+        ai_result.label in {"spam", "suspicious"}
+        or explicit_adult_rule_delete
+        or explicit_private_solicitation_delete
     ):
         return Decision(
             action="delete",

@@ -514,8 +514,10 @@ def _event_reasons_are_reviewable(reasons: list[str]) -> bool:
         "obfuscated",
         "phishing",
         "porn",
+        "private",
         "reward",
         "scam",
+        "sexual",
         "spam",
         "suspicious",
         "telegram",
@@ -532,6 +534,9 @@ def _event_text_is_reviewable(text: str) -> bool:
             r"\b(?:watch\s+now|see\s+more|tap\s+to\s+watch|link\s+expires|"
             r"onlyfans|xxx|nsfw|porn|nudes?|video\s+call|naked|pussy|cock|dick|fucked|swallowed|"
             r"riding|hot\s+instagram|instagram\s+girl|hidden\s+cam|private\s+tape|"
+            r"fuck\s*mate|f\s*ck\s*mate|sex\s+partner|hookup\s+anyone|anyone\s+horny|"
+            r"dm\s+me\b.{0,70}\b(?:i\s+have\s+it|link|file)|"
+            r"pm\s+me\b.{0,70}\b(?:i\s+have\s+it|link|file)|"
             r"claim\s+reward|connect\s+wallet|verify\s+your\s+account)\b|"
             r"(?:t|telegram)\.me/[a-z0-9_]*bot(?:\?|/)?",
             text,
