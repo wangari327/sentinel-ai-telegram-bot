@@ -151,6 +151,18 @@
     "DEMO_MODE": {
       "description": "Safe demo mode. No bans and no deletes unless explicitly confirmed by admin.",
       "value": "false"
+    },
+    "SPAM_REPEAT_BAN_AFTER": {
+      "description": "Ban a user after this many confirmed spam deletions in the same group. Set 0 to disable repeat-spam bans.",
+      "value": "2"
+    },
+    "MODERATION_DELETE_NOTICE_ENABLED": {
+      "description": "Send a short group notice after Sentinel successfully deletes spam.",
+      "value": "true"
+    },
+    "MODERATION_NOTICE_CLEANUP_SECONDS": {
+      "description": "Seconds before Sentinel deletes its own spam-cleanup notices. Set 0 to keep notices.",
+      "value": "86400"
     }
   },
   "addons": ["heroku-postgresql:essential-0"],

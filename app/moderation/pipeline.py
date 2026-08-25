@@ -4,6 +4,7 @@ import asyncio
 import re
 from collections import defaultdict, deque
 from dataclasses import asdict, dataclass, replace
+from html import escape
 from time import monotonic
 
 from sqlalchemy.orm import Session
@@ -847,6 +848,113 @@ def _message_sender_context(
     )
 
 
+def _repeat_ban_threshold(settings: Settings) -> int:
+    return max(0, settings.spam_repeat_ban_after)
+
+
+def _maybe_escalate_repeat_violation(
+    *,
+    decision: Decision,
+    sender: SenderContext,
+    previous_violation_count: int,
+    settings: Settings,
+) -> Decision:
+    threshold = _repeat_ban_threshold(settings)
+    if threshold <= 0:
+        return decision
+    if not decision.delete or decision.ban:
+        return decision
+    if sender.user_id is None or sender.is_admin or sender.is_trusted:
+        return decision
+    if previous_violation_count + 1 < threshold:
+        return decision
+    return replace(
+        decision,
+        action="delete_and_ban",
+        ban=True,
+        pending_review=False,
+        reason=f"repeat spam violation threshold reached ({threshold})",
+    )
+
+
+def _moderation_delete_notice_text(
+    *,
+    sender: SenderContext,
+    violation_count: int,
+    repeat_ban_after: int,
+    banned: bool,
+    ban_failed: bool,
+) -> str:
+    subject = _sender_public_label(sender)
+    if banned:
+        status = f"{subject} was banned after <b>{violation_count}</b> spam strikes."
+    elif ban_failed:
+        status = (
+            f"{subject} hit the repeat-spam threshold, but I could not ban them yet. "
+            "Check my ban/restrict permission."
+        )
+    elif repeat_ban_after > 0:
+        remaining = max(0, repeat_ban_after - violation_count)
+        if remaining <= 0:
+            status = f"{subject} is at the ban threshold. Next cleanup may become a ban."
+        elif remaining == 1:
+            status = f"{subject} has <b>{violation_count}</b> strike. Next spam gets a ban."
+        else:
+            status = (
+                f"{subject} has <b>{violation_count}</b> strike. "
+                f"Ban threshold: <b>{repeat_ban_after}</b>."
+            )
+    else:
+        status = f"{subject} has <b>{violation_count}</b> recorded spam strike."
+    return f"<b>Spam neutralized.</b>\n{status}"
+
+
+def _sender_public_label(sender: SenderContext) -> str:
+    label = sender.display_name or (f"@{sender.username}" if sender.username else "The sender")
+    if sender.user_id is not None:
+        return f'<a href="tg://user?id={sender.user_id}">{escape(label)}</a>'
+    return escape(label)
+
+
+async def _send_moderation_delete_notice(
+    *,
+    bot: object,
+    session: Session,
+    settings: Settings,
+    group_settings: object,
+    chat_id: int,
+    sender: SenderContext,
+    violation_count: int,
+    action_result: ActionResult,
+) -> None:
+    if not settings.moderation_delete_notice_enabled:
+        return
+    if (
+        bool(getattr(group_settings, "silent_enabled", False))
+        or getattr(group_settings, "mode", "") == "silent"
+    ):
+        return
+    if action_result.delete_status != "ok":
+        return
+    text = _moderation_delete_notice_text(
+        sender=sender,
+        violation_count=violation_count,
+        repeat_ban_after=_repeat_ban_threshold(settings),
+        banned=action_result.ban_status == "ok",
+        ban_failed=action_result.ban_status in {"failed", "missing_permission"},
+    )
+    await send_ephemeral_message(
+        bot=bot,
+        session=session,
+        chat_id=chat_id,
+        text=text,
+        settings=settings,
+        purpose="moderation_delete_notice",
+        parse_mode="HTML",
+        cleanup_seconds=settings.moderation_notice_cleanup_seconds,
+    )
+
+
 async def process_group_message(
     *,
     message: object,
@@ -884,6 +992,7 @@ async def process_group_message(
         return PipelineResult(status="skipped_linked_channel_announcement")
 
     is_trusted = repositories.is_trusted_user(session, group.id, sender_user_id)
+    previous_violation_count = repositories.get_violation_count(session, group.id, sender_user_id)
     previous_violation_score = repositories.get_violation_score(session, group.id, sender_user_id)
     sender = _message_sender_context(
         message=message,
@@ -967,6 +1076,12 @@ async def process_group_message(
         setup_completed=bool(group.setup_completed),
         demo_mode=settings.demo_mode,
     )
+    decision = _maybe_escalate_repeat_violation(
+        decision=decision,
+        sender=sender,
+        previous_violation_count=previous_violation_count,
+        settings=settings,
+    )
     event = repositories.save_moderation_event(
         session,
         group_id=group.id,
@@ -999,13 +1114,27 @@ async def process_group_message(
         can_ban=bool(getattr(permissions, "can_restrict_members", False)),
     )
     event.action_status = action_result.error or "ok"
+    violation_count = previous_violation_count
     if (decision.delete or decision.ban) and sender_user_id is not None:
-        repositories.record_violation(
+        violation = repositories.record_violation(
             session,
             group_id=group.id,
             telegram_user_id=sender_user_id,
             action=decision.action,
             score=score.final_score,
+        )
+        violation_count = violation.violation_count
+
+    if decision.delete:
+        await _send_moderation_delete_notice(
+            bot=bot,
+            session=session,
+            settings=settings,
+            group_settings=group_settings,
+            chat_id=chat_id,
+            sender=sender,
+            violation_count=violation_count,
+            action_result=action_result,
         )
 
     if decision.notify_admin or decision.pending_review:

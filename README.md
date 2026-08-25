@@ -94,6 +94,8 @@ Private owner controls:
 
 Automatic bans are controlled separately from mode. Use `/ban_on` only after the bot has ban/restrict permission and you are comfortable with detections. Use `/ban_off` to keep deleting spam without banning users.
 
+When Sentinel successfully deletes spam, it can post a short group notice saying the message was neutralized and warning that repeat spam leads to a ban. `SPAM_REPEAT_BAN_AFTER=2` means the second confirmed spam deletion from the same user in the same group escalates to a ban when the bot has ban/restrict permission. Set `SPAM_REPEAT_BAN_AFTER=0` to disable repeat-strike bans. `MODERATION_DELETE_NOTICE_ENABLED=true` controls the notice, and `MODERATION_NOTICE_CLEANUP_SECONDS=86400` makes Sentinel clean up that notice after one day. Silent mode suppresses these notices.
+
 Admin notifications are private DM review messages with action buttons. The admin user must start the bot in private chat first, otherwise Telegram may block the DM.
 
 ## iBOX Support Assistant
@@ -412,6 +414,9 @@ SUPPORT_AI_INTENT_THRESHOLD=0.68
 SUPPORT_AI_INTENT_MAX_TEXT_CHARS=700
 PRIVATE_SUPPORT_ENABLED=true
 PRIVATE_ABUSE_SILENCE_AFTER=3
+SPAM_REPEAT_BAN_AFTER=2
+MODERATION_DELETE_NOTICE_ENABLED=true
+MODERATION_NOTICE_CLEANUP_SECONDS=86400
 TVWEB_CACHE_ENABLED=true
 TVWEB_CACHE_REFRESH_ON_STARTUP=false
 TVWEB_CACHE_REFRESH_INTERVAL_MINUTES=360
@@ -428,6 +433,8 @@ For the website integration, paste the website `.env` value named `DATABASE_URL`
 The default Docker Postgres volume survives container rebuilds and repo updates. It does not survive a full VPS reinstall unless you restore a backup. For reinstall-proof bot data, use an external Postgres `DATABASE_URL` or schedule off-VPS `pg_dump` backups; MongoDB is not used by the current Sentinel schema.
 
 `TELEGRAM_DROP_PENDING_UPDATES_ON_STARTUP=true` is intentional for this moderation bot. If the VPS is down for a while, Telegram may queue hundreds of old group messages. Dropping pending updates on restart prevents Sentinel from replaying stale chat history, spamming users, and burning AI quota. `TELEGRAM_WEBHOOK_MAX_CONNECTIONS=10` also keeps Telegram from flooding the app immediately after downtime.
+
+`SPAM_REPEAT_BAN_AFTER=2` makes the first confirmed deletion a visible warning and the second confirmed spam deletion a ban attempt. `MODERATION_DELETE_NOTICE_ENABLED=true` posts the group notice after a successful deletion, while `MODERATION_NOTICE_CLEANUP_SECONDS=86400` removes that notice after one day. Use `0` cleanup seconds if you want moderation notices to stay, or set `MODERATION_DELETE_NOTICE_ENABLED=false` if the group should stay quiet. Silent mode also suppresses delete notices.
 
 ### VPS Operations
 

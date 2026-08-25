@@ -421,6 +421,18 @@ def get_violation_score(session: Session, group_id: int, telegram_user_id: int |
     return min(0.20, violation.violation_count * 0.04 + violation.risk_score * 0.12)
 
 
+def get_violation_count(session: Session, group_id: int, telegram_user_id: int | None) -> int:
+    if telegram_user_id is None:
+        return 0
+    violation = session.scalar(
+        select(UserViolation).where(
+            UserViolation.group_id == group_id,
+            UserViolation.telegram_user_id == telegram_user_id,
+        )
+    )
+    return int(violation.violation_count) if violation is not None else 0
+
+
 def count_examples(session: Session, group_id: int) -> dict[str, int]:
     rows = session.execute(
         select(TrainingExample.label, func.count(TrainingExample.id))

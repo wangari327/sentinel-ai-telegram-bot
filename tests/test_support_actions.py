@@ -50,3 +50,23 @@ async def test_durable_ephemeral_message_is_not_cleanup_tracked() -> None:
     assert sent is None
     assert bot.kwargs is not None
     assert bot.kwargs["parse_mode"] == "HTML"
+
+
+async def test_ephemeral_message_can_use_custom_cleanup_seconds() -> None:
+    settings = load_settings({"SUPPORT_REPLY_CLEANUP_SECONDS": "60"})
+    bot = FakeBot()
+
+    with _session() as session:
+        await send_ephemeral_message(
+            bot=bot,
+            session=session,
+            chat_id=-1001,
+            text="Spam neutralized.",
+            settings=settings,
+            cleanup_seconds=86400,
+        )
+
+        sent = session.scalar(select(BotSentMessage))
+
+    assert sent is not None
+    assert sent.purpose == "support_reply"

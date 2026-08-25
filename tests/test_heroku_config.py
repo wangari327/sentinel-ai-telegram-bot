@@ -74,6 +74,9 @@ def test_tvweb_cache_config_defaults() -> None:
     assert settings.private_support_enabled
     assert settings.private_abuse_silence_after == 3
     assert settings.support_reply_cleanup_seconds == 86400
+    assert settings.spam_repeat_ban_after == 2
+    assert settings.moderation_delete_notice_enabled
+    assert settings.moderation_notice_cleanup_seconds == 86400
     assert settings.tvweb_cache_enabled
     assert not settings.tvweb_cache_refresh_on_startup
     assert settings.tvweb_cache_refresh_interval_minutes == 360

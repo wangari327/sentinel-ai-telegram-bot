@@ -25,6 +25,7 @@ async def send_ephemeral_message(
     purpose: str = "support_reply",
     parse_mode: str | None = "HTML",
     cleanup: bool = True,
+    cleanup_seconds: int | None = None,
     reply_markup: InlineKeyboardMarkup | None = None,
 ) -> object | None:
     try:
@@ -38,14 +39,16 @@ async def send_ephemeral_message(
         )
     except TelegramAPIError:
         return None
-    if cleanup and settings.support_reply_cleanup_seconds > 0:
+    delete_delay = (
+        settings.support_reply_cleanup_seconds if cleanup_seconds is None else cleanup_seconds
+    )
+    if cleanup and delete_delay > 0:
         repositories.record_bot_sent_message(
             session,
             chat_id=chat_id,
             message_id=int(getattr(sent, "message_id", 0)),
             purpose=purpose,
-            delete_after=datetime.now(tz=UTC)
-            + timedelta(seconds=settings.support_reply_cleanup_seconds),
+            delete_after=datetime.now(tz=UTC) + timedelta(seconds=delete_delay),
         )
     return sent
 

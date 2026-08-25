@@ -57,10 +57,14 @@ class FakePermissions:
 class FakeBot:
     def __init__(self) -> None:
         self.deleted: list[tuple[int, int]] = []
+        self.banned: list[tuple[int, int]] = []
         self.sent: list[dict[str, object]] = []
 
     async def delete_message(self, chat_id: int, message_id: int) -> None:
         self.deleted.append((chat_id, message_id))
+
+    async def ban_chat_member(self, chat_id: int, user_id: int) -> None:
+        self.banned.append((chat_id, user_id))
 
     async def send_message(self, **kwargs: object) -> FakeMessage:
         self.sent.append(kwargs)
@@ -115,6 +119,8 @@ async def test_pipeline_deletes_obvious_no_link_adult_spam() -> None:
     assert bot.deleted == [(-1001, 101)]
     assert event is not None
     assert event.ai_label == "spam"
+    assert bot.sent
+    assert "Spam neutralized" in str(bot.sent[0]["text"])
 
 
 async def test_pipeline_auto_completes_authorized_group_and_deletes_adult_solicitation() -> None:
@@ -308,6 +314,139 @@ async def test_pipeline_deletes_private_content_solicitation_without_request_log
     assert not result.support_replied
     assert request is None
     assert bot.deleted == [(-1001, 101)]
+
+
+async def test_pipeline_bans_repeat_spammer_after_delete_threshold() -> None:
+    settings = load_settings(
+        {
+            "AUTHORIZED_CHAT_IDS": "-1001",
+            "DEFAULT_GROUP_MODE": "normal",
+            "AI_PROVIDER": "rules_only",
+            "AI_FALLBACK_PROVIDER": "rules_only",
+            "SUPPORT_ENABLED": "false",
+            "SPAM_REPEAT_BAN_AFTER": "2",
+        }
+    )
+    bot = FakeBot()
+    message = FakeMessage(text="Need a fuckmate anyone")
+
+    with _session() as session:
+        group = repositories.get_or_create_group(
+            session,
+            telegram_chat_id=-1001,
+            title="Series 2022 Requests",
+            chat_type="supergroup",
+            settings=settings,
+        )
+        group.setup_completed = True
+        repositories.record_violation(
+            session,
+            group_id=group.id,
+            telegram_user_id=message.from_user.id,
+            action="delete",
+            score=0.95,
+        )
+
+        result = await process_group_message(
+            message=message,
+            bot=bot,
+            session=session,
+            settings=settings,
+            permissions=FakePermissions(can_restrict_members=True),
+            sender_is_admin=False,
+        )
+
+    assert result.decision is not None
+    assert result.decision.action == "delete_and_ban"
+    assert bot.deleted == [(-1001, 101)]
+    assert bot.banned == [(-1001, 9001)]
+    assert bot.sent
+    assert "banned after" in str(bot.sent[0]["text"])
+
+
+async def test_pipeline_warns_when_repeat_ban_permission_is_missing() -> None:
+    settings = load_settings(
+        {
+            "AUTHORIZED_CHAT_IDS": "-1001",
+            "DEFAULT_GROUP_MODE": "normal",
+            "AI_PROVIDER": "rules_only",
+            "AI_FALLBACK_PROVIDER": "rules_only",
+            "SUPPORT_ENABLED": "false",
+            "SPAM_REPEAT_BAN_AFTER": "2",
+        }
+    )
+    bot = FakeBot()
+    message = FakeMessage(text="Need a fuckmate anyone")
+
+    with _session() as session:
+        group = repositories.get_or_create_group(
+            session,
+            telegram_chat_id=-1001,
+            title="Series 2022 Requests",
+            chat_type="supergroup",
+            settings=settings,
+        )
+        group.setup_completed = True
+        repositories.record_violation(
+            session,
+            group_id=group.id,
+            telegram_user_id=message.from_user.id,
+            action="delete",
+            score=0.95,
+        )
+
+        result = await process_group_message(
+            message=message,
+            bot=bot,
+            session=session,
+            settings=settings,
+            permissions=FakePermissions(can_restrict_members=False),
+            sender_is_admin=False,
+        )
+
+    assert result.decision is not None
+    assert result.decision.action == "delete_and_ban"
+    assert bot.deleted == [(-1001, 101)]
+    assert bot.banned == []
+    assert bot.sent
+    assert "could not ban" in str(bot.sent[0]["text"])
+
+
+async def test_pipeline_suppresses_delete_notice_in_silent_mode() -> None:
+    settings = load_settings(
+        {
+            "AUTHORIZED_CHAT_IDS": "-1001",
+            "DEFAULT_GROUP_MODE": "silent",
+            "AI_PROVIDER": "rules_only",
+            "AI_FALLBACK_PROVIDER": "rules_only",
+            "SUPPORT_ENABLED": "false",
+        }
+    )
+    bot = FakeBot()
+    message = FakeMessage(text="Need a fuckmate anyone")
+
+    with _session() as session:
+        group = repositories.get_or_create_group(
+            session,
+            telegram_chat_id=-1001,
+            title="Series 2022 Requests",
+            chat_type="supergroup",
+            settings=settings,
+        )
+        group.setup_completed = True
+        result = await process_group_message(
+            message=message,
+            bot=bot,
+            session=session,
+            settings=settings,
+            permissions=FakePermissions(),
+            sender_is_admin=False,
+        )
+
+    assert result.decision is not None
+    assert result.decision.action == "delete"
+    assert bot.deleted == [(-1001, 101)]
+    assert bot.sent == []
 
 
 async def test_pipeline_skips_linked_channel_catalog_announcements() -> None:

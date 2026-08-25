@@ -106,6 +106,9 @@ class Settings:
     ollama_model: str
     spam_delete_threshold: float
     spam_ban_threshold: float
+    spam_repeat_ban_after: int
+    moderation_delete_notice_enabled: bool
+    moderation_notice_cleanup_seconds: int
     suspicious_low_threshold: float
     suspicious_high_threshold: float
     ai_scan_all_messages: bool
@@ -245,6 +248,13 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         ollama_model=source.get("OLLAMA_MODEL", "qwen2.5:7b-instruct"),
         spam_delete_threshold=_float(source.get("SPAM_DELETE_THRESHOLD"), 0.88),
         spam_ban_threshold=_float(source.get("SPAM_BAN_THRESHOLD"), 0.96),
+        spam_repeat_ban_after=_int(source.get("SPAM_REPEAT_BAN_AFTER"), 2),
+        moderation_delete_notice_enabled=_bool(
+            source.get("MODERATION_DELETE_NOTICE_ENABLED"), True
+        ),
+        moderation_notice_cleanup_seconds=_int(
+            source.get("MODERATION_NOTICE_CLEANUP_SECONDS"), 86400
+        ),
         suspicious_low_threshold=_float(source.get("SUSPICIOUS_LOW_THRESHOLD"), 0.55),
         suspicious_high_threshold=_float(source.get("SUSPICIOUS_HIGH_THRESHOLD"), 0.87),
         ai_scan_all_messages=_bool(source.get("AI_SCAN_ALL_MESSAGES"), False),
