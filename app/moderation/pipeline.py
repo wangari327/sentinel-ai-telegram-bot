@@ -100,6 +100,24 @@ def should_skip(
     return False
 
 
+def auto_complete_authorized_group_setup(
+    *,
+    group: Group,
+    settings: Settings,
+    permissions: object,
+) -> bool:
+    if group.setup_completed:
+        return False
+    if not repositories.chat_is_authorized(group, settings):
+        return False
+    if not bool(getattr(permissions, "is_admin", False)):
+        return False
+    if not bool(getattr(permissions, "can_delete_messages", False)):
+        return False
+    group.setup_completed = True
+    return True
+
+
 def should_call_ai(*, features: object, group_settings: object) -> bool:
     if getattr(group_settings, "ai_scan_all_messages", False):
         return True
@@ -165,7 +183,7 @@ async def maybe_handle_support_message(
     if intent is None:
         return False
     matches = []
-    if intent.title_query:
+    if intent.title_query and intent.kind != "howto":
         matches = await _search_ibox_catalog(
             session=session,
             settings=settings,
@@ -848,6 +866,12 @@ async def process_group_message(
     group_settings = repositories.get_or_create_group_settings(session, group, settings)
     if not repositories.chat_is_authorized(group, settings):
         return PipelineResult(status="skipped_unauthorized_chat")
+    if auto_complete_authorized_group_setup(
+        group=group,
+        settings=settings,
+        permissions=permissions,
+    ):
+        logger.info("Auto-completed setup for authorized chat %s", chat_id)
 
     user = getattr(message, "from_user", None)
     sender_user_id = getattr(user, "id", None)

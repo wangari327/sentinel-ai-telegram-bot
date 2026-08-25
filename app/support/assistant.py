@@ -120,6 +120,50 @@ HOWTO_WORDS = (
     "tutorial",
     "guide",
 )
+CATALOG_HELP_TRIGGERS = (
+    "do you have",
+    "do u have",
+    "do you guys have",
+    "have you got",
+    "any",
+    "can i get",
+    "i can get",
+    "get link",
+    "send link",
+    "link of it",
+    "where can i",
+    "where do i",
+    "where is",
+    "how do i find",
+    "how to find",
+    "search",
+)
+CATALOG_TOPIC_ALIASES = {
+    "reality shows": (
+        "reality show",
+        "reality shows",
+        "reality tv",
+    ),
+    "web series": (
+        "web series",
+        "web ser",
+        "webser",
+    ),
+    "tv shows": (
+        "tv shows",
+        "tv show",
+        "television shows",
+    ),
+    "movies": (
+        "movies",
+        "movie section",
+        "films",
+    ),
+    "anime": (
+        "anime",
+        "anime section",
+    ),
+}
 CATEGORY_HINTS = {
     "movie": ("movie", "film"),
     "anime": ("anime",),
@@ -236,6 +280,18 @@ def detect_support_intent(
             kind="release",
             title_query=release_query,
             category_hint=_category_hint(lower) or "tv",
+            season_number=season_number,
+            season_end_number=season_end_number,
+            episode_number=episode_number,
+            episode_end_number=episode_end_number,
+        )
+
+    catalog_help_query = _extract_catalog_help_query(text)
+    if catalog_help_query:
+        return SupportIntent(
+            kind="howto",
+            title_query=catalog_help_query,
+            category_hint=_category_hint(lower) or _catalog_topic_category(catalog_help_query),
             season_number=season_number,
             season_end_number=season_end_number,
             episode_number=episode_number,
@@ -585,6 +641,50 @@ def support_title_query_is_allowed(value: str | None) -> bool:
     if not value:
         return False
     return not _title_query_is_blocked(value)
+
+
+def support_title_query_is_catalog_topic(value: str | None) -> bool:
+    if not value:
+        return False
+    return _catalog_topic_from_key(_support_text_key(value)) is not None
+
+
+def _extract_catalog_help_query(text: str) -> str | None:
+    key = _support_text_key(text)
+    topic = _catalog_topic_from_key(key)
+    if not topic:
+        return None
+    if any(trigger in key for trigger in CATALOG_HELP_TRIGGERS):
+        return topic
+    if re.fullmatch(r"(?:any\s+)?(?:reality shows|web series|tv shows|movies|anime)\??", key):
+        return topic
+    return None
+
+
+def _support_text_key(text: str) -> str:
+    key = normalize_title_query(text).casefold()
+    key = re.sub(r"\bu\b", "you", key)
+    key = re.sub(r"\bser6\b", "series", key)
+    key = re.sub(r"\bser\d+\b", "series", key)
+    key = re.sub(r"\bweb\s*series\b", "web series", key)
+    return key
+
+
+def _catalog_topic_from_key(key: str) -> str | None:
+    for canonical, aliases in CATALOG_TOPIC_ALIASES.items():
+        if any(alias in key for alias in aliases):
+            return canonical
+    return None
+
+
+def _catalog_topic_category(topic: str) -> str | None:
+    if topic in {"reality shows", "web series", "tv shows"}:
+        return "tv"
+    if topic == "movies":
+        return "movie"
+    if topic == "anime":
+        return "anime"
+    return None
 
 
 def _bare_title_kind(
@@ -958,6 +1058,28 @@ def build_support_reply(
         )
 
     if intent.kind == "howto":
+        if intent.title_query and support_title_query_is_catalog_topic(intent.title_query):
+            topic = escape(intent.title_query)
+            category = _catalog_topic_category(intent.title_query)
+            return SupportReply(
+                text=(
+                    "<b>Search ibox-tv.com</b>\n"
+                    f"<blockquote>{topic}</blockquote>\n"
+                    "Use the search button and try a few normal title words. If the site gives "
+                    "you nothing, send the exact movie/show name and I will check the catalog "
+                    "instead of pretending a whole category is one title."
+                ),
+                should_send_tutorial=True,
+                allow_ai_rewrite=False,
+                buttons=(
+                    SupportButton(
+                        text="Search ibox-tv.com",
+                        url=search_url(settings, intent.title_query, category),
+                    ),
+                    SupportButton(text="Tutorial", callback_data="support:tutorial"),
+                    SupportButton(text="Solved", callback_data="support:solved"),
+                ),
+            )
         return SupportReply(
             text=(
                 "<b>iBOX quick route</b>\n"

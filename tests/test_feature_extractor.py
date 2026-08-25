@@ -38,6 +38,16 @@ def test_current_forwarded_story_caption_campaign_is_high_risk() -> None:
     assert features.high_risk_link
 
 
+def test_video_call_nudes_solicitation_is_high_risk_without_link() -> None:
+    normalized = normalize_message_parts(
+        text="Smash hk 100\nVideo call\nNudes, any one online"
+    )
+    features = extract_features(normalized)
+
+    assert features.contains_porn_bait
+    assert features.contains_suspicious_adult_story_lure
+
+
 def test_adult_source_forwarded_story_is_high_risk_even_when_caption_hidden() -> None:
     normalized = normalize_message_parts(
         metadata_text="Forwarded Telegram story from Wet Dreams",

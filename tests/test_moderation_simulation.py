@@ -49,6 +49,7 @@ class FakeMessage:
 
 @dataclass(slots=True)
 class FakePermissions:
+    is_admin: bool = True
     can_delete_messages: bool = True
     can_restrict_members: bool = False
 
@@ -114,6 +115,46 @@ async def test_pipeline_deletes_obvious_no_link_adult_spam() -> None:
     assert bot.deleted == [(-1001, 101)]
     assert event is not None
     assert event.ai_label == "spam"
+
+
+async def test_pipeline_auto_completes_authorized_group_and_deletes_adult_solicitation() -> None:
+    settings = load_settings(
+        {
+            "AUTHORIZED_CHAT_IDS": "-1001",
+            "DEFAULT_GROUP_MODE": "normal",
+            "AI_PROVIDER": "rules_only",
+            "AI_FALLBACK_PROVIDER": "rules_only",
+            "SUPPORT_ENABLED": "false",
+        }
+    )
+    bot = FakeBot()
+    message = FakeMessage(text="Smash hk 100\nVideo call\nNudes, any one online")
+
+    with _session() as session:
+        group = repositories.get_or_create_group(
+            session,
+            telegram_chat_id=-1001,
+            title="Series 2022 Requests",
+            chat_type="supergroup",
+            settings=settings,
+        )
+
+        result = await process_group_message(
+            message=message,
+            bot=bot,
+            session=session,
+            settings=settings,
+            permissions=FakePermissions(),
+            sender_is_admin=False,
+        )
+        event = session.scalar(select(ModerationEvent))
+
+    assert group.setup_completed
+    assert result.decision is not None
+    assert result.decision.action == "delete"
+    assert bot.deleted == [(-1001, 101)]
+    assert event is not None
+    assert event.action_taken == "delete"
 
 
 async def test_pipeline_deletes_hot_instagram_adult_bait_even_without_url() -> None:
@@ -776,6 +817,49 @@ async def test_pipeline_ignores_generic_search_engine_phrase() -> None:
     assert not result.support_replied
     assert request is None
     assert bot.sent == []
+
+
+async def test_pipeline_guides_catalog_topic_question_without_logging_request() -> None:
+    settings = load_settings(
+        {
+            "AUTHORIZED_CHAT_IDS": "-1001",
+            "DEFAULT_GROUP_MODE": "normal",
+            "AI_PROVIDER": "rules_only",
+            "AI_FALLBACK_PROVIDER": "rules_only",
+            "SUPPORT_ENABLED": "true",
+            "SUPPORT_AI_INTENT_ENABLED": "false",
+            "SUPPORT_AI_REPLIES": "false",
+            "SUPPORT_REPLY_CLEANUP_SECONDS": "0",
+            "TVWEB_DATABASE_URL": "postgresql://readonly:pass@example.com:5432/ibox",
+        }
+    )
+    bot = FakeBot()
+    message = FakeMessage(text="Pls do u have reality shows")
+
+    with _session() as session:
+        group = repositories.get_or_create_group(
+            session,
+            telegram_chat_id=-1001,
+            title="Series 2022 Requests",
+            chat_type="supergroup",
+            settings=settings,
+        )
+        group.setup_completed = True
+
+        result = await process_group_message(
+            message=message,
+            bot=bot,
+            session=session,
+            settings=settings,
+            permissions=FakePermissions(),
+            sender_is_admin=False,
+        )
+        request = session.scalar(select(SupportRequest))
+
+    assert result.support_replied
+    assert request is None
+    assert bot.sent
+    assert "Search ibox-tv.com" in str(bot.sent[0]["text"])
 
 
 async def test_pipeline_clarifies_season_only_reply_instead_of_random_search() -> None:

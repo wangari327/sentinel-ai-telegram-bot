@@ -99,6 +99,24 @@ def test_ai_intent_rejects_generic_search_engine_request() -> None:
     assert intent is None
 
 
+def test_ai_intent_converts_catalog_topic_request_to_howto() -> None:
+    settings = load_settings({})
+
+    intent = _intent_from_data(
+        {
+            "kind": "request",
+            "confidence": 0.92,
+            "title_query": "reality shows",
+            "category_hint": "tv",
+        },
+        settings=settings,
+    )
+
+    assert intent is not None
+    assert intent.kind == "howto"
+    assert intent.title_query == "reality shows"
+
+
 def test_ai_intent_accepts_howto_without_title() -> None:
     settings = load_settings({})
 

@@ -473,6 +473,15 @@ def list_recent_reviewable_moderation_events(
 
 def moderation_event_is_reviewable(event: ModerationEvent) -> bool:
     action = (event.action_taken or "").casefold()
+    text_reviewable = _event_text_is_reviewable(event.normalized_text or "")
+    reasons_reviewable = _event_reasons_are_reviewable(event.reasons or [])
+    if action in {"monitor_setup_required", "monitor"} and not (
+        (event.final_score or 0.0) >= 0.55
+        or (event.rule_score or 0.0) >= 0.25
+        or reasons_reviewable
+        or text_reviewable
+    ):
+        return False
     if action in {
         "ask_admin",
         "delete",
@@ -488,9 +497,9 @@ def moderation_event_is_reviewable(event: ModerationEvent) -> bool:
         return True
     if (event.final_score or 0.0) >= 0.55 or (event.rule_score or 0.0) >= 0.25:
         return True
-    if _event_reasons_are_reviewable(event.reasons or []):
+    if reasons_reviewable:
         return True
-    return _event_text_is_reviewable(event.normalized_text or "")
+    return text_reviewable
 
 
 def _event_reasons_are_reviewable(reasons: list[str]) -> bool:
@@ -521,7 +530,7 @@ def _event_text_is_reviewable(text: str) -> bool:
     return bool(
         re.search(
             r"\b(?:watch\s+now|see\s+more|tap\s+to\s+watch|link\s+expires|"
-            r"onlyfans|xxx|nsfw|porn|naked|pussy|cock|dick|fucked|swallowed|"
+            r"onlyfans|xxx|nsfw|porn|nudes?|video\s+call|naked|pussy|cock|dick|fucked|swallowed|"
             r"riding|hot\s+instagram|instagram\s+girl|hidden\s+cam|private\s+tape|"
             r"claim\s+reward|connect\s+wallet|verify\s+your\s+account)\b|"
             r"(?:t|telegram)\.me/[a-z0-9_]*bot(?:\?|/)?",

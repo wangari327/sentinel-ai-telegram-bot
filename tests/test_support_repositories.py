@@ -224,6 +224,26 @@ def test_reviewable_moderation_history_filters_harmless_allows() -> None:
             session,
             group_id=group.id,
             telegram_chat_id=-1001,
+            telegram_message_id=15,
+            sender_user_id=666,
+            normalized_text="levels",
+            text_hash="low-score-setup",
+            domains=[],
+            ai_label="suspicious",
+            ai_confidence=0.72,
+            rule_score=0.0,
+            final_score=0.0,
+            action_taken="monitor_setup_required",
+            action_status="ok",
+            reasons=[],
+            provider_name="mock",
+            model_name="mock",
+            prompt_version="test",
+        )
+        repositories.save_moderation_event(
+            session,
+            group_id=group.id,
+            telegram_chat_id=-1001,
             telegram_message_id=11,
             sender_user_id=222,
             normalized_text="Hot Instagram girl got exposed riding cock like crazy",
@@ -233,6 +253,26 @@ def test_reviewable_moderation_history_filters_harmless_allows() -> None:
             ai_confidence=0.4,
             rule_score=0.0,
             final_score=0.4,
+            action_taken="allow",
+            action_status="ok",
+            reasons=[],
+            provider_name="mock",
+            model_name="mock",
+            prompt_version="test",
+        )
+        repositories.save_moderation_event(
+            session,
+            group_id=group.id,
+            telegram_chat_id=-1001,
+            telegram_message_id=16,
+            sender_user_id=777,
+            normalized_text="Smash hk 100 Video call Nudes, any one online",
+            text_hash="adult-solicitation",
+            domains=[],
+            ai_label="suspicious",
+            ai_confidence=0.32,
+            rule_score=0.0,
+            final_score=0.26,
             action_taken="allow",
             action_status="ok",
             reasons=[],
@@ -267,5 +307,7 @@ def test_reviewable_moderation_history_filters_harmless_allows() -> None:
     assert "The Mentalist" not in texts
     assert "Merlin season 1-5 please" not in texts
     assert "Time Bandits [2024]" not in texts
+    assert "levels" not in texts
     assert "Hot Instagram girl got exposed riding cock like crazy" in texts
+    assert "Smash hk 100 Video call Nudes, any one online" in texts
     assert "claim reward verify your account" in texts

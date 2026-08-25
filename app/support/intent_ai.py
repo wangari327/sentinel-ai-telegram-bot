@@ -11,6 +11,7 @@ from app.config import Settings
 from app.support.assistant import (
     SupportIntent,
     extract_season_episode_ranges,
+    support_title_query_is_catalog_topic,
     support_title_query_is_allowed,
 )
 from app.support.ibox_search import normalize_title_query
@@ -205,10 +206,12 @@ def _messages(text: str) -> list[dict[str, str]]:
                 "Use release for release-date or future-episode questions such as "
                 "'when is season 2 out' or 'next episode release date'. "
                 "Use howto for asking how to download, play, search, use file-store bots, "
-                "or use the website. Use none for greetings, thanks, admin bot notices, "
+                "or use the website. Also use howto, not request, for category/browsing "
+                "questions like 'do u have reality shows', 'any web series', or 'where "
+                "are movies'. Use none for greetings, thanks, admin bot notices, "
                 "mode/status messages, username changes, spam reports from other bots, "
                 "or incomplete episode-only messages like 'Season 1' without a title. "
-                "or normal conversation not asking for help. "
+                "Use none for normal conversation not asking for help. "
                 "Extract title_query as the content title only, without filler words like "
                 "'requesting', 'link', 'expired', 'please fix', or 'thanks'. Extract "
                 "season_number and episode_number when the user names them."
@@ -311,6 +314,8 @@ def _intent_from_data(data: dict[str, Any], *, settings: Settings) -> SupportInt
     title = normalize_title_query(str(title_query)) if title_query else None
     if title and (len(title) < 2 or not support_title_query_is_allowed(title)):
         title = None
+    if kind == "request" and title and support_title_query_is_catalog_topic(title):
+        kind = "howto"
 
     category = data.get("category_hint")
     category_hint = str(category).strip().lower() if category else None

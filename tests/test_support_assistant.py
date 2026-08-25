@@ -176,6 +176,36 @@ def test_detects_howto_request() -> None:
     assert intent.kind == "howto"
 
 
+def test_category_question_is_howto_not_request() -> None:
+    intent = detect_support_intent("Pls do u have reality shows")
+
+    assert intent is not None
+    assert intent.kind == "howto"
+    assert intent.title_query == "reality shows"
+    assert intent.category_hint == "tv"
+
+
+def test_typo_web_series_link_question_is_howto() -> None:
+    intent = detect_support_intent("I can get link of it web ser6")
+
+    assert intent is not None
+    assert intent.kind == "howto"
+    assert intent.title_query == "web series"
+    assert intent.category_hint == "tv"
+
+
+def test_category_howto_reply_does_not_log_request_language() -> None:
+    settings = load_settings({"TVWEB_SITE_BASE_URL": "https://ibox-tv.com"})
+    intent = detect_support_intent("Pls do u have reality shows")
+
+    reply = build_support_reply(intent=intent, matches=[], settings=settings)
+
+    assert reply is not None
+    assert "request pile" not in reply.text
+    assert "Search ibox-tv.com" in reply.text
+    assert any(button.text == "Search ibox-tv.com" for button in reply.buttons)
+
+
 def test_support_parser_avoids_substring_false_positives() -> None:
     assert detect_support_intent("The address is fine") is None
     assert detect_support_intent("That soundtrack is nice") is None

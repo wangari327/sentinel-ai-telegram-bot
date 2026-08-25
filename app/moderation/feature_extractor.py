@@ -139,11 +139,15 @@ def extract_features(
         r"free\s+porn",
         r"leaked?\s+(?:video|pics?)",
         r"18\+",
+        r"\bnudes?\b",
         r"watch\s+(?:before|b4)\s+(?:deleted|removed|takedown|ban)",
         r"private\s+(?:channel|group).*(?:girls|video|leak)",
         r"(?:hidden\s+cam|private\s+tape|full\s+tape|view\s+full\s+scene|watch\s+uncut)",
         r"(?:hot\s+)?instagram\s+girl.{0,60}(?:exposed|naked|riding|cock)",
         r"(?:got\s+exposed|exposed).{0,60}(?:riding|cock|naked|p\s*ssy|pussy|dick)",
+        r"\b(?:video\s+call|vc)\b.{0,70}\b(?:nudes?|sex|xxx|adult|horny|online)\b",
+        r"\b(?:nudes?|sex|xxx|adult|horny)\b.{0,70}\b(?:video\s+call|vc|online|dm|pm)\b",
+        r"\b(?:any\s*one|anyone)\s+online\b.{0,70}\b(?:nudes?|video\s+call|vc|sex)\b",
         r"sex\s+video",
     ]
     contains_porn_bait = any(re.search(pattern, deobfuscated) for pattern in porn_patterns)
@@ -162,12 +166,20 @@ def extract_features(
             "instagramgirlgotexposed",
             "hotinstagramgirl",
             "ridingcock",
+            "videocallnudes",
+            "videocallsex",
+            "nudesanyoneonline",
+            "nudesonline",
         )
     )
 
     adult_lure_patterns = [
         r"\b(?:xxx|nsfw|onlyfans)\b",
+        r"\bnudes?\b",
         r"\bwet\s+dreams?\b",
+        r"\b(?:video\s+call|vc)\b.{0,70}\b(?:nudes?|sex|xxx|adult|horny|online)\b",
+        r"\b(?:nudes?|sex|xxx|adult|horny)\b.{0,70}\b(?:video\s+call|vc|online|dm|pm)\b",
+        r"\b(?:any\s*one|anyone)\s+online\b.{0,70}\b(?:nudes?|video\s+call|vc|sex)\b",
         r"\b(?:hidden\s+cam|private\s+tape|full\s+tape|uncut\s+video|full\s+scene)\b",
         (
             r"\b(?:leaked?|caught|spotted|banned|deleted|exclusive|live|hidden)\b.{0,60}"
@@ -209,6 +221,11 @@ def extract_features(
             "stepmom",
             "stepsis",
             "gymgirl",
+            "nudes",
+            "videocallnudes",
+            "videocallsex",
+            "nudesanyoneonline",
+            "nudesonline",
         )
     )
 
