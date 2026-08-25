@@ -1269,3 +1269,137 @@ async def test_pipeline_filters_wrong_season_match_before_request_reply(monkeypa
     assert bot.sent
     assert "Season not aired yet" in str(bot.sent[0]["text"])
     assert "Season 3 Episode 1-7" not in str(bot.sent[0]["text"])
+
+
+async def test_pipeline_does_not_log_later_season_when_tmdb_unavailable(monkeypatch) -> None:
+    settings = load_settings(
+        {
+            "AUTHORIZED_CHAT_IDS": "-1001",
+            "DEFAULT_GROUP_MODE": "normal",
+            "AI_PROVIDER": "rules_only",
+            "AI_FALLBACK_PROVIDER": "rules_only",
+            "SUPPORT_ENABLED": "true",
+            "SUPPORT_AI_REPLIES": "false",
+            "SUPPORT_REPLY_CLEANUP_SECONDS": "0",
+            "TMDB_BEARER_TOKEN": "bad-token",
+        }
+    )
+    bot = FakeBot()
+    message = FakeMessage(text="Silo season 4")
+
+    async def fake_resolve_tmdb_availability(**kwargs) -> TmdbAvailability:
+        return TmdbAvailability(found=False, source_error="401 Unauthorized")
+
+    monkeypatch.setattr(pipeline, "resolve_tmdb_availability", fake_resolve_tmdb_availability)
+
+    with _session() as session:
+        group = repositories.get_or_create_group(
+            session,
+            telegram_chat_id=-1001,
+            title="Series 2022 Requests",
+            chat_type="supergroup",
+            settings=settings,
+        )
+        group.setup_completed = True
+        session.add(
+            TvwebCatalogItem(
+                tvweb_id=77,
+                title="Silo",
+                title_key="silo",
+                episode_title="Season 3 Episode 1-8",
+                category="tv",
+                slug="silo-season-3-episode-1-8",
+                year=2026,
+                rating=8.0,
+                download_link=None,
+            )
+        )
+
+        result = await process_group_message(
+            message=message,
+            bot=bot,
+            session=session,
+            settings=settings,
+            permissions=FakePermissions(),
+            sender_is_admin=False,
+        )
+        request = session.scalar(select(SupportRequest))
+
+    assert result.support_replied
+    assert request is None
+    assert bot.sent
+    assert "Not logging this yet" in str(bot.sent[0]["text"])
+    assert "Season 3 Episode 1-8" in str(bot.sent[0]["text"])
+
+
+async def test_pipeline_logs_later_season_when_tmdb_confirms_it_aired(monkeypatch) -> None:
+    settings = load_settings(
+        {
+            "AUTHORIZED_CHAT_IDS": "-1001",
+            "DEFAULT_GROUP_MODE": "normal",
+            "AI_PROVIDER": "rules_only",
+            "AI_FALLBACK_PROVIDER": "rules_only",
+            "SUPPORT_ENABLED": "true",
+            "SUPPORT_AI_REPLIES": "false",
+            "SUPPORT_REPLY_CLEANUP_SECONDS": "0",
+            "TVWEB_DATABASE_URL": "postgresql://user:pass@example.invalid/db",
+            "TMDB_BEARER_TOKEN": "token",
+        }
+    )
+    bot = FakeBot()
+    message = FakeMessage(text="Silo season 4")
+
+    async def fake_resolve_tmdb_availability(**kwargs) -> TmdbAvailability:
+        return TmdbAvailability(
+            found=True,
+            title="Silo",
+            media_type="tv",
+            requested_season_exists=True,
+            season_number=4,
+            season_air_date=date(2026, 1, 1),
+        )
+
+    async def fake_search_ibox_database(**kwargs) -> list[IboxItem]:
+        return []
+
+    monkeypatch.setattr(pipeline, "resolve_tmdb_availability", fake_resolve_tmdb_availability)
+    monkeypatch.setattr(pipeline, "_search_ibox_database", fake_search_ibox_database)
+
+    with _session() as session:
+        group = repositories.get_or_create_group(
+            session,
+            telegram_chat_id=-1001,
+            title="Series 2022 Requests",
+            chat_type="supergroup",
+            settings=settings,
+        )
+        group.setup_completed = True
+        session.add(
+            TvwebCatalogItem(
+                tvweb_id=77,
+                title="Silo",
+                title_key="silo",
+                episode_title="Season 3 Episode 1-8",
+                category="tv",
+                slug="silo-season-3-episode-1-8",
+                year=2026,
+                rating=8.0,
+                download_link=None,
+            )
+        )
+
+        result = await process_group_message(
+            message=message,
+            bot=bot,
+            session=session,
+            settings=settings,
+            permissions=FakePermissions(),
+            sender_is_admin=False,
+        )
+        request = session.scalar(select(SupportRequest))
+
+    assert result.support_replied
+    assert request is not None
+    assert request.title_query == "Silo Season 4"
+    assert bot.sent
+    assert "Request logged" in str(bot.sent[0]["text"])

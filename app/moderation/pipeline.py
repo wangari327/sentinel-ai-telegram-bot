@@ -36,9 +36,12 @@ from app.support.assistant import (
     SupportIntent,
     SupportReply,
     availability_blocks_logging,
+    availability_confirms_requested_part_ready,
     build_availability_reply,
+    build_catalog_ahead_of_release_reply,
     build_log_vetting_reply,
     build_support_reply,
+    catalog_requested_season_is_ahead,
     detect_support_intent,
     extract_support_context_title,
     filter_matches_for_requested_part,
@@ -240,6 +243,38 @@ async def maybe_handle_support_message(
             recent_context_texts=recent_context_texts or [],
         )
 
+    catalog_matches_without_part: list[IboxItem] = []
+    if not matches and intent.kind in {"request", "issue"} and intent.season_number is not None:
+        catalog_matches_without_part = await _search_catalog_without_requested_part(
+            session=session,
+            settings=settings,
+            intent=intent,
+        )
+        if not availability_confirms_requested_part_ready(
+            intent, availability
+        ) and catalog_requested_season_is_ahead(
+            intent=intent,
+            catalog_matches=catalog_matches_without_part,
+        ):
+            reply = build_catalog_ahead_of_release_reply(
+                intent=intent,
+                catalog_matches=catalog_matches_without_part,
+                settings=settings,
+                availability=availability,
+            )
+            await _send_support_reply(
+                message=message,
+                bot=bot,
+                session=session,
+                settings=settings,
+                group=group,
+                normalized=normalized,
+                intent=intent,
+                matches=catalog_matches_without_part,
+                reply=reply,
+            )
+            return True
+
     occurrence_count: int | None = None
     if intent.kind in {"request", "issue"} and intent.title_query and not matches:
         vet_result = await vet_support_log_with_ai(
@@ -378,6 +413,24 @@ async def maybe_handle_support_message(
         reply=reply,
     )
     return True
+
+
+async def _search_catalog_without_requested_part(
+    *,
+    session: Session,
+    settings: Settings,
+    intent: SupportIntent,
+) -> list[IboxItem]:
+    if not intent.title_query:
+        return []
+    stripped = replace(
+        intent,
+        season_number=None,
+        season_end_number=None,
+        episode_number=None,
+        episode_end_number=None,
+    )
+    return await _search_ibox_catalog(session=session, settings=settings, intent=stripped)
 
 
 async def _search_ibox_catalog(

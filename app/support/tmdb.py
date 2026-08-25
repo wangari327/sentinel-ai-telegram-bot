@@ -200,18 +200,22 @@ async def _availability_from_details(
         if season:
             season_air_date = _parse_date(season.get("air_date"))
             season_episode_count = _int_or_none(season.get("episode_count"))
-            season_details = await _get_json(
-                settings,
-                f"/tv/{tmdb_id}/season/{season_number}",
-                {},
-            )
-            episodes = season_details.get("episodes") or []
             if episode_number is not None:
-                episode = _find_episode(episodes, episode_number)
-                episode_exists = episode is not None
-                if episode:
-                    episode_air_date = _parse_date(episode.get("air_date"))
-                    episode_name = episode.get("name")
+                try:
+                    season_details = await _get_json(
+                        settings,
+                        f"/tv/{tmdb_id}/season/{season_number}",
+                        {},
+                    )
+                    episodes = season_details.get("episodes") or []
+                except httpx.HTTPError:
+                    episodes = None
+                if episodes is not None:
+                    episode = _find_episode(episodes, episode_number)
+                    episode_exists = episode is not None
+                    if episode:
+                        episode_air_date = _parse_date(episode.get("air_date"))
+                        episode_name = episode.get("name")
 
     next_episode = details.get("next_episode_to_air") or {}
     return TmdbAvailability(

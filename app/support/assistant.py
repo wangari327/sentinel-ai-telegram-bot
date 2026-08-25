@@ -837,6 +837,88 @@ def availability_blocks_logging(
     return False
 
 
+def availability_confirms_requested_part_ready(
+    intent: SupportIntent,
+    availability: TmdbAvailability | None,
+    *,
+    today: date | None = None,
+) -> bool:
+    if availability is None or not availability.found:
+        return False
+    state = availability.state(today)
+    if intent.episode_number is not None:
+        return state == "aired_episode"
+    if intent.season_number is not None:
+        return state == "aired_season"
+    return state in {"released_movie", "released_tv"}
+
+
+def catalog_requested_season_is_ahead(
+    *,
+    intent: SupportIntent,
+    catalog_matches: list[IboxItem],
+) -> bool:
+    if intent.season_number is None or not catalog_matches:
+        return False
+    _, latest = catalog_season_bounds(catalog_matches)
+    return latest is not None and latest < intent.season_number
+
+
+def catalog_season_bounds(catalog_matches: list[IboxItem]) -> tuple[int | None, int | None]:
+    values: list[int] = []
+    for item in catalog_matches:
+        for start, end in _catalog_item_season_ranges(item):
+            values.extend((start, end))
+    if not values:
+        return None, None
+    return min(values), max(values)
+
+
+def build_catalog_ahead_of_release_reply(
+    *,
+    intent: SupportIntent,
+    catalog_matches: list[IboxItem],
+    settings: Settings,
+    availability: TmdbAvailability | None = None,
+) -> SupportReply:
+    title = escape(availability.title or intent.title_query or "that title")
+    requested = escape(_requested_part_label(intent) or "that season")
+    _, latest = catalog_season_bounds(catalog_matches)
+    current_item = catalog_matches[0] if catalog_matches else None
+    current_line = (
+        f"I can see <b>{escape(current_item.display_title)}</b> on ibox-tv.com"
+        if current_item is not None
+        else "I can see earlier catalog entries on ibox-tv.com"
+    )
+    latest_line = f", up to <b>Season {latest}</b>" if latest is not None else ""
+    buttons: list[SupportButton] = []
+    if current_item is not None:
+        buttons.append(SupportButton(text="Open current", url=item_url(settings, current_item)))
+    if availability and availability.tmdb_url:
+        buttons.append(SupportButton(text="Open TMDB", url=availability.tmdb_url))
+    buttons.extend(
+        [
+            SupportButton(
+                text="Search ibox-tv.com",
+                url=search_url(settings, intent.title_query or "", intent.category_hint),
+            ),
+            SupportButton(text="Tutorial", callback_data="support:tutorial"),
+            SupportButton(text="Solved", callback_data="support:solved"),
+        ]
+    )
+    return SupportReply(
+        text=(
+            "<b>Not logging this yet</b>\n"
+            f"<blockquote>{title} - {requested}</blockquote>\n"
+            f"{current_line}{latest_line}, but I cannot confirm <b>{requested}</b> "
+            "as available/aired right now. Request pile stays clean; future seasons do "
+            "not get to sneak in wearing a fake moustache."
+        ),
+        allow_ai_rewrite=False,
+        buttons=tuple(buttons),
+    )
+
+
 def build_availability_reply(
     *,
     intent: SupportIntent,
@@ -1326,6 +1408,46 @@ def _requested_part_label(intent: SupportIntent) -> str | None:
         else:
             parts.append(f"Episode {intent.episode_number}")
     return " ".join(parts) or None
+
+
+def _catalog_item_season_ranges(item: IboxItem) -> list[tuple[int, int]]:
+    values = [
+        item.display_title,
+        item.title,
+        item.episode_title or "",
+        item.slug,
+    ]
+    ranges: list[tuple[int, int]] = []
+    for value in values:
+        ranges.extend(_season_ranges_from_text(value))
+    return ranges
+
+
+def _season_ranges_from_text(value: str) -> list[tuple[int, int]]:
+    ranges: list[tuple[int, int]] = []
+    for match in re.finditer(
+        r"\b(?:season|series)\s*0*(\d{1,3})" r"(?:\s*(?:-|\u2013|to)\s*0*(\d{1,3}))?\b",
+        value,
+        flags=re.IGNORECASE,
+    ):
+        start = int(match.group(1))
+        end = int(match.group(2) or start)
+        ranges.append((min(start, end), max(start, end)))
+    for match in re.finditer(r"\bs0*(\d{1,3})\s*e0*\d{1,4}\b", value, flags=re.IGNORECASE):
+        season = int(match.group(1))
+        ranges.append((season, season))
+    for match in re.finditer(
+        r"(?:season|series)[-_]0*(\d{1,3})(?:[-_]0*(\d{1,3}))?",
+        value,
+        flags=re.IGNORECASE,
+    ):
+        start = int(match.group(1))
+        end = int(match.group(2) or start)
+        ranges.append((min(start, end), max(start, end)))
+    for match in re.finditer(r"\bs0*(\d{1,3})[-_]e0*\d{1,4}\b", value, flags=re.IGNORECASE):
+        season = int(match.group(1))
+        ranges.append((season, season))
+    return ranges
 
 
 def _date_text(value: date | None) -> str:

@@ -9,8 +9,11 @@ from app.support.assistant import (
     SupportIntent,
     SupportReply,
     availability_blocks_logging,
+    availability_confirms_requested_part_ready,
     build_availability_reply,
     build_support_reply,
+    catalog_requested_season_is_ahead,
+    catalog_season_bounds,
     detect_support_intent,
     extract_season_episode_numbers,
     filter_matches_for_requested_part,
@@ -324,6 +327,47 @@ def test_requested_season_filter_understands_catalog_ranges() -> None:
 
     assert filter_matches_for_requested_part([item], matching) == [item]
     assert filter_matches_for_requested_part([item], missing) == []
+
+
+def test_catalog_season_bounds_detects_latest_known_season() -> None:
+    items = [
+        IboxItem(
+            id=77,
+            title="Silo",
+            episode_title="Season 3 Episode 1-8",
+            category="tv",
+            slug="silo-season-3-episode-1-8",
+            year=2026,
+            rating=8.0,
+            download_link=None,
+        )
+    ]
+    intent = SupportIntent(kind="request", title_query="Silo", category_hint="tv", season_number=4)
+
+    assert catalog_season_bounds(items) == (3, 3)
+    assert catalog_requested_season_is_ahead(intent=intent, catalog_matches=items)
+
+
+def test_availability_ready_check_requires_confirmed_requested_part() -> None:
+    intent = SupportIntent(kind="request", title_query="Silo", category_hint="tv", season_number=4)
+
+    assert availability_confirms_requested_part_ready(
+        intent,
+        TmdbAvailability(
+            found=True,
+            title="Silo",
+            media_type="tv",
+            requested_season_exists=True,
+            season_number=4,
+            season_air_date=date(2026, 8, 1),
+        ),
+        today=date(2026, 8, 14),
+    )
+    assert not availability_confirms_requested_part_ready(
+        intent,
+        TmdbAvailability(found=False, source_error="401 Unauthorized"),
+        today=date(2026, 8, 14),
+    )
 
 
 def test_future_episode_availability_blocks_dashboard_logging() -> None:
