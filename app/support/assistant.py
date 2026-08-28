@@ -45,7 +45,7 @@ ISSUE_REPEAT_OPENERS = (
     "Yep, {title} is already logged for a {label}. The complaint counter is now {count}.",
 )
 REQUEST_OPENERS = (
-    "No sign of {title} on iBOX yet. I have filed it as a request.",
+    "No sign of {title} on ibox-tv.com yet. I have filed it as a request.",
     "{title} is not in the catalog yet, so I have put it on the request pile.",
     "Could not find {title} yet. Request logged, clipboard mildly pleased.",
 )
@@ -177,6 +177,14 @@ STOP_PREFIXES = (
     "hello",
     "can you",
     "could you",
+    "i'd like to request",
+    "id like to request",
+    "i would like to request",
+    "i want to request",
+    "i'd like",
+    "id like",
+    "i would like",
+    "i want",
     "can i get",
     "do you have",
     "where can i find",
@@ -214,6 +222,54 @@ GENERIC_TITLE_QUERIES = {
     "website",
     "websites",
 }
+NUMBER_WORDS = {
+    "zero": 0,
+    "one": 1,
+    "two": 2,
+    "three": 3,
+    "four": 4,
+    "five": 5,
+    "six": 6,
+    "seven": 7,
+    "eight": 8,
+    "nine": 9,
+    "ten": 10,
+    "eleven": 11,
+    "twelve": 12,
+    "thirteen": 13,
+    "fourteen": 14,
+    "fifteen": 15,
+    "sixteen": 16,
+    "seventeen": 17,
+    "eighteen": 18,
+    "nineteen": 19,
+    "twenty": 20,
+    "first": 1,
+    "second": 2,
+    "third": 3,
+    "fourth": 4,
+    "fifth": 5,
+    "sixth": 6,
+    "seventh": 7,
+    "eighth": 8,
+    "ninth": 9,
+    "tenth": 10,
+    "eleventh": 11,
+    "twelfth": 12,
+    "thirteenth": 13,
+    "fourteenth": 14,
+    "fifteenth": 15,
+    "sixteenth": 16,
+    "seventeenth": 17,
+    "eighteenth": 18,
+    "nineteenth": 19,
+    "twentieth": 20,
+}
+NUMBER_WORD_PATTERN = "|".join(
+    re.escape(word) for word in sorted(NUMBER_WORDS, key=len, reverse=True)
+)
+SEASON_TOKEN_PATTERN = rf"(?:0*\d{{1,3}}|{NUMBER_WORD_PATTERN})"
+EPISODE_TOKEN_PATTERN = rf"(?:0*\d{{1,4}}|{NUMBER_WORD_PATTERN})"
 
 
 @dataclass(frozen=True, slots=True)
@@ -384,28 +440,52 @@ def extract_season_episode_ranges(
     episode_end_number: int | None = None
     compact_match = re.search(r"(?i)\bs0*(\d{1,3})\s*e0*(\d{1,4})\b", text)
     season_match = re.search(
-        r"(?i)\b(?:season|series|s)\s*0*(\d{1,3})" r"(?:\s*(?:-|\u2013|to)\s*0*(\d{1,3}))?\b",
+        rf"(?i)\b(?:season|series)\s*(?P<season_start>{SEASON_TOKEN_PATTERN})"
+        rf"(?:\s*(?:-|\u2013|to|and|&)\s*(?:season|series)?\s*"
+        rf"(?P<season_end>{SEASON_TOKEN_PATTERN}))?\b"
+        r"|\bs\s*0*(?P<s_start>\d{1,3})"
+        r"(?:\s*(?:-|\u2013|to|and|&)\s*s?0*(?P<s_end>\d{1,3}))?\b",
+        text,
+    )
+    ordinal_season_match = re.search(
+        rf"(?i)\b(?P<ordinal_season>{SEASON_TOKEN_PATTERN})(?:st|nd|rd|th)?\s+season\b",
         text,
     )
     if compact_match:
         season_number = int(compact_match.group(1))
         episode_number = int(compact_match.group(2))
     if season_number is None and season_match:
-        season_number = int(season_match.group(1))
-        if season_match.group(2):
-            season_end_number = int(season_match.group(2))
+        season_number = _number_token_to_int(
+            season_match.group("season_start") or season_match.group("s_start")
+        )
+        end_token = season_match.group("season_end") or season_match.group("s_end")
+        if end_token:
+            season_end_number = _number_token_to_int(end_token)
+    if season_number is None and ordinal_season_match:
+        season_number = _number_token_to_int(ordinal_season_match.group("ordinal_season"))
     episode_match = re.search(
-        r"(?i)\b(?:episode|ep)\s*0*(\d{1,4})" r"(?:\s*(?:-|\u2013|to)\s*0*(\d{1,4}))?\b",
+        rf"(?i)\b(?:episode|ep)\s*(?P<episode_start>{EPISODE_TOKEN_PATTERN})"
+        rf"(?:\s*(?:-|\u2013|to|and|&)\s*(?:episode|ep)?\s*"
+        rf"(?P<episode_end>{EPISODE_TOKEN_PATTERN}))?\b",
         text,
     )
     short_episode_match = re.search(r"(?i)\be0*(\d{1,4})\b", text)
     if episode_number is None and episode_match:
-        episode_number = int(episode_match.group(1))
-        if episode_match.group(2):
-            episode_end_number = int(episode_match.group(2))
+        episode_number = _number_token_to_int(episode_match.group("episode_start"))
+        if episode_match.group("episode_end"):
+            episode_end_number = _number_token_to_int(episode_match.group("episode_end"))
     elif episode_number is None and short_episode_match:
         episode_number = int(short_episode_match.group(1))
     return season_number, season_end_number, episode_number, episode_end_number
+
+
+def _number_token_to_int(value: str | None) -> int | None:
+    if not value:
+        return None
+    token = value.casefold().strip()
+    if token.isdigit():
+        return int(token.lstrip("0") or "0")
+    return NUMBER_WORDS.get(token)
 
 
 def extract_incomplete_episode_reference(text: str) -> str | None:
@@ -413,12 +493,26 @@ def extract_incomplete_episode_reference(text: str) -> str | None:
     if not value:
         return None
     if re.fullmatch(
-        r"(?i)(?:season|series|s)\s*\d+(?:\s*(?:-|\u2013|to)\s*\d+)?"
-        r"(?:\s*(?:episode|ep|e)\s*\d+(?:\s*(?:-|\u2013|to)\s*\d+)?)?",
+        rf"(?i)(?:season|series)\s*{SEASON_TOKEN_PATTERN}"
+        rf"(?:\s*(?:-|\u2013|to|and|&)\s*(?:season|series)?\s*{SEASON_TOKEN_PATTERN})?"
+        rf"(?:\s*(?:episode|ep)\s*{EPISODE_TOKEN_PATTERN}"
+        rf"(?:\s*(?:-|\u2013|to|and|&)\s*(?:episode|ep)?\s*{EPISODE_TOKEN_PATTERN})?)?",
         value,
     ):
         return value
-    if re.fullmatch(r"(?i)(?:episode|ep|e)\s*\d+(?:\s*(?:-|\u2013|to)\s*\d+)?", value):
+    if re.fullmatch(
+        r"(?i)s\s*\d+(?:\s*(?:-|\u2013|to|and|&)\s*s?\d+)?"
+        r"(?:\s*e\s*\d+(?:\s*(?:-|\u2013|to|and|&)\s*e?\d+)?)?",
+        value,
+    ):
+        return value
+    if re.fullmatch(
+        rf"(?i)(?:episode|ep)\s*{EPISODE_TOKEN_PATTERN}"
+        rf"(?:\s*(?:-|\u2013|to|and|&)\s*(?:episode|ep)?\s*{EPISODE_TOKEN_PATTERN})?",
+        value,
+    ):
+        return value
+    if re.fullmatch(r"(?i)e\s*\d+(?:\s*(?:-|\u2013|to|and|&)\s*e?\d+)?", value):
         return value
     return None
 
@@ -429,18 +523,8 @@ def extract_support_title_query(text: str) -> str | None:
 
 def extract_support_context_title(text: str) -> str | None:
     value = re.sub(r"https?://\S+", " ", text)
-    value = re.sub(
-        r"\b(?:season|series)\s*\d+(?:\s*(?:-|\u2013|to)\s*\d+)?.*$",
-        " ",
-        value,
-        flags=re.IGNORECASE,
-    )
-    value = re.sub(
-        r"\b(?:episode|ep)\s*\d+(?:\s*(?:-|\u2013|to)\s*\d+)?.*$",
-        " ",
-        value,
-        flags=re.IGNORECASE,
-    )
+    value = _strip_parenthetical_context(value)
+    value = _strip_requested_part_phrases(value)
     value = re.sub(
         r"\b(?:click\s+here|new\s+episode\s+update|new\s+episodes?|download|complete)\b",
         " ",
@@ -478,8 +562,83 @@ def _category_hint(lower: str) -> str | None:
     return None
 
 
+def _strip_parenthetical_context(value: str) -> str:
+    value = re.sub(r"\(\s*(?:19|20)\d{2}\s*\)", " ", value)
+    return re.sub(
+        r"\([^)]*\b(?:airing|aired|release|released|ongoing|upcoming|pending)\b[^)]*\)",
+        " ",
+        value,
+        flags=re.IGNORECASE,
+    )
+
+
+def _strip_requested_part_phrases(value: str) -> str:
+    value = re.sub(
+        r"\bs0*\d{1,3}\s*e0*\d{1,4}(?:\s*(?:-|\u2013|to)\s*\d{1,4})?\b",
+        " ",
+        value,
+        flags=re.IGNORECASE,
+    )
+    value = re.sub(
+        rf"\b(?:season|series)\s*{SEASON_TOKEN_PATTERN}"
+        rf"(?:\s*(?:-|\u2013|to|and|&)\s*(?:season|series)?\s*{SEASON_TOKEN_PATTERN})?\b",
+        " ",
+        value,
+        flags=re.IGNORECASE,
+    )
+    value = re.sub(
+        rf"\b{SEASON_TOKEN_PATTERN}(?:st|nd|rd|th)?\s+season\b",
+        " ",
+        value,
+        flags=re.IGNORECASE,
+    )
+    value = re.sub(
+        r"\bs\s*\d+(?:\s*(?:-|\u2013|to|and|&)\s*s?\d+)?\b",
+        " ",
+        value,
+        flags=re.IGNORECASE,
+    )
+    value = re.sub(
+        rf"\b(?:episode|ep)\s*{EPISODE_TOKEN_PATTERN}"
+        rf"(?:\s*(?:-|\u2013|to|and|&)\s*(?:episode|ep)?\s*{EPISODE_TOKEN_PATTERN})?\b",
+        " ",
+        value,
+        flags=re.IGNORECASE,
+    )
+    value = re.sub(
+        rf"\b{EPISODE_TOKEN_PATTERN}(?:st|nd|rd|th)?\s+episode\b",
+        " ",
+        value,
+        flags=re.IGNORECASE,
+    )
+    return re.sub(
+        r"\be\s*\d+(?:\s*(?:-|\u2013|to|and|&)\s*e?\d+)?\b",
+        " ",
+        value,
+        flags=re.IGNORECASE,
+    )
+
+
+def _strip_trailing_request_context(value: str) -> str:
+    value = re.sub(
+        r"\b(?:and\s+)?(?:which|that)\s+(?:is|are|was|were|will\s+be\s+)?"
+        r"(?:currently\s+)?(?:airing|ongoing|released|out|available)\b.*$",
+        " ",
+        value,
+        flags=re.IGNORECASE,
+    )
+    value = re.sub(
+        r"\b(?:and\s+)?(?:currently\s+)?(?:airing|ongoing)\b.*$",
+        " ",
+        value,
+        flags=re.IGNORECASE,
+    )
+    return re.sub(r"\s+(?:and|or|which|that)$", "", value, flags=re.IGNORECASE)
+
+
 def _extract_title_query(text: str) -> str | None:
     value = re.sub(r"https?://\S+", " ", text)
+    value = _strip_parenthetical_context(value)
     value = re.sub(
         r"\b(?:how\s+(?:to|do\s+i)\s+(?:download|play|watch)|tutorial|guide)\b",
         " ",
@@ -515,36 +674,8 @@ def _extract_title_query(text: str) -> str | None:
         value,
         flags=re.IGNORECASE,
     )
-    value = re.sub(
-        r"\bs\d{1,3}\s*e\d{1,4}(?:\s*(?:-|\u2013|to)\s*\d{1,4})?\b",
-        " ",
-        value,
-        flags=re.IGNORECASE,
-    )
-    value = re.sub(
-        r"\b(?:season|series)\s*\d+(?:\s*(?:-|\u2013|to)\s*\d+)?\b",
-        " ",
-        value,
-        flags=re.IGNORECASE,
-    )
-    value = re.sub(
-        r"\bs\s*\d+(?:\s*(?:-|\u2013|to)\s*\d+)?\b",
-        " ",
-        value,
-        flags=re.IGNORECASE,
-    )
-    value = re.sub(
-        r"\b(?:episode|ep)\s*\d+(?:\s*(?:-|\u2013|to)\s*\d+)?\b",
-        " ",
-        value,
-        flags=re.IGNORECASE,
-    )
-    value = re.sub(
-        r"\be\s*\d+(?:\s*(?:-|\u2013|to)\s*\d+)?\b",
-        " ",
-        value,
-        flags=re.IGNORECASE,
-    )
+    value = _strip_requested_part_phrases(value)
+    value = _strip_trailing_request_context(value)
     value = _strip_polite_suffixes(normalize_title_query(value))
     lower = value.casefold()
     changed = True
@@ -569,6 +700,8 @@ def _extract_title_query(text: str) -> str | None:
         value,
         flags=re.IGNORECASE,
     )
+    value = re.sub(r"^(?:of|for)\s+", "", value, flags=re.IGNORECASE)
+    value = _strip_trailing_request_context(value)
     value = _strip_polite_suffixes(normalize_title_query(value))
     value = re.sub(r"^(?:the|a|an)\s+", "", value, flags=re.IGNORECASE)
     value = normalize_title_query(value)
@@ -582,7 +715,8 @@ def _extract_title_query(text: str) -> str | None:
 def _extract_bare_title_query(text: str) -> str | None:
     if re.search(r"https?://|www\.|@\w+|[/#]", text, flags=re.IGNORECASE):
         return None
-    value = _strip_polite_suffixes(normalize_title_query(text.strip(" ?!.,:;\"'()[]{}")))
+    value = _strip_parenthetical_context(text.strip(" ?!.,:;\"'[]{}"))
+    value = _strip_polite_suffixes(normalize_title_query(value))
     lower = value.casefold()
     if lower in BARE_TITLE_BLOCKLIST or _title_query_is_blocked(value):
         return None
@@ -750,10 +884,14 @@ def _item_matches_requested_part(item: IboxItem, intent: SupportIntent) -> bool:
             if part
         )
     ).casefold()
-    if intent.season_number is not None and not _season_matches_value(
-        value,
-        intent.season_number,
-        intent.season_end_number,
+    if (
+        intent.season_number is not None
+        and not _season_matches_value(
+            value,
+            intent.season_number,
+            intent.season_end_number,
+        )
+        and not _item_can_represent_whole_show(item, intent)
     ):
         return False
     return intent.episode_number is None or _episode_matches_value(
@@ -763,6 +901,23 @@ def _item_matches_requested_part(item: IboxItem, intent: SupportIntent) -> bool:
     )
 
 
+def _item_can_represent_whole_show(item: IboxItem, intent: SupportIntent) -> bool:
+    if intent.season_number is None or intent.episode_number is not None or item.category == "movie":
+        return False
+    title_key = _compact_title_key(item.title)
+    query_key = _compact_title_key(intent.title_query or "")
+    if not title_key or title_key != query_key:
+        return False
+    value = normalize_title_query(
+        " ".join(part for part in (item.episode_title, item.slug) if part)
+    ).casefold()
+    return not _season_ranges_from_text(value)
+
+
+def _compact_title_key(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "", normalize_title_query(value).casefold())
+
+
 def _season_matches_value(
     value: str,
     season_number: int,
@@ -770,14 +925,19 @@ def _season_matches_value(
 ) -> bool:
     requested_end = season_end_number or season_number
     for match in re.finditer(
-        r"\b(?:season|series)\s*0*(\d{1,3})(?:\s*(?:-|\u2013|to)\s*0*(\d{1,3}))?\b"
-        r"|\bs0*(\d{1,3})(?:\s*(?:-|\u2013|to)\s*0*(\d{1,3}))?(?:\b|e\d{1,4}\b)",
+        rf"\b(?:season|series)\s*(?P<season_start>{SEASON_TOKEN_PATTERN})"
+        rf"(?:\s*(?:-|\u2013|to|and|&)\s*(?:season|series)?\s*"
+        rf"(?P<season_end>{SEASON_TOKEN_PATTERN}))?\b"
+        r"|\bs0*(?P<s_start>\d{1,3})"
+        r"(?:\s*(?:-|\u2013|to|and|&)\s*s?0*(?P<s_end>\d{1,3}))?(?:\b|e\d{1,4}\b)",
         value,
         flags=re.IGNORECASE,
     ):
-        start = int(match.group(1) or match.group(3))
-        end = int(match.group(2) or match.group(4) or start)
-        if start <= requested_end and season_number <= end:
+        start = _number_token_to_int(match.group("season_start") or match.group("s_start"))
+        end = _number_token_to_int(
+            match.group("season_end") or match.group("s_end") or str(start or "")
+        )
+        if start is not None and end is not None and start <= requested_end and season_number <= end:
             return True
     return False
 
@@ -789,13 +949,18 @@ def _episode_matches_value(
 ) -> bool:
     requested_end = episode_end_number or episode_number
     for pattern in (
-        r"\b(?:episode|ep|e)\s*0*(\d{1,4})(?:\s*(?:-|\u2013|to)\s*0*(\d{1,4}))?\b",
+        (
+            rf"\b(?:episode|ep)\s*({EPISODE_TOKEN_PATTERN})"
+            rf"(?:\s*(?:-|\u2013|to|and|&)\s*(?:episode|ep)?\s*"
+            rf"({EPISODE_TOKEN_PATTERN}))?\b"
+        ),
+        r"\be\s*0*(\d{1,4})(?:\s*(?:-|\u2013|to|and|&)\s*e?0*(\d{1,4}))?\b",
         r"\bs\d{1,3}\s*e0*(\d{1,4})(?:\s*(?:-|\u2013|to)\s*0*(\d{1,4}))?\b",
     ):
         for match in re.finditer(pattern, value, flags=re.IGNORECASE):
-            start = int(match.group(1))
-            end = int(match.group(2) or start)
-            if start <= requested_end and episode_number <= end:
+            start = _number_token_to_int(match.group(1))
+            end = _number_token_to_int(match.group(2) or str(start or ""))
+            if start is not None and end is not None and start <= requested_end and episode_number <= end:
                 return True
     return False
 
@@ -894,8 +1059,6 @@ def build_catalog_ahead_of_release_reply(
     buttons: list[SupportButton] = []
     if current_item is not None:
         buttons.append(SupportButton(text="Open current", url=item_url(settings, current_item)))
-    if availability and availability.tmdb_url:
-        buttons.append(SupportButton(text="Open TMDB", url=availability.tmdb_url))
     buttons.extend(
         [
             SupportButton(
@@ -911,8 +1074,53 @@ def build_catalog_ahead_of_release_reply(
             "<b>Not logging this yet</b>\n"
             f"<blockquote>{title} - {requested}</blockquote>\n"
             f"{current_line}{latest_line}, but I cannot confirm <b>{requested}</b> "
-            "as available/aired right now. Request pile stays clean; future seasons do "
-            "not get to sneak in wearing a fake moustache."
+            "as available right now. Request pile stays clean; imaginary future seasons "
+            "can queue politely outside."
+        ),
+        allow_ai_rewrite=False,
+        buttons=tuple(buttons),
+    )
+
+
+def build_catalog_base_found_reply(
+    *,
+    intent: SupportIntent,
+    catalog_matches: list[IboxItem],
+    settings: Settings,
+) -> SupportReply:
+    requested = _requested_part_label(intent)
+    quoted = escape(
+        f"{intent.title_query} - {requested}" if requested and intent.title_query else intent.title_query or requested or "that title"
+    )
+    buttons: list[SupportButton] = []
+    if catalog_matches:
+        first = catalog_matches[0]
+        buttons.append(SupportButton(text="Open current", url=item_url(settings, first)))
+        found_line = (
+            f"I found <b>{escape(first.display_title)}</b> on ibox-tv.com. "
+            "That title is already in the iBOX lane, even if this exact season/episode "
+            "is not written as a separate website row."
+        )
+    else:
+        found_line = (
+            "I found the base title on ibox-tv.com, but not a clean exact part row."
+        )
+    buttons.extend(
+        [
+            SupportButton(
+                text="Search ibox-tv.com",
+                url=search_url(settings, intent.title_query or "", intent.category_hint),
+            ),
+            SupportButton(text="Tutorial", callback_data="support:tutorial"),
+            SupportButton(text="Still stuck", callback_data="support:stuck"),
+        ]
+    )
+    return SupportReply(
+        text=(
+            "<b>Found on ibox-tv.com</b>\n"
+            f"<blockquote>{quoted}</blockquote>\n"
+            f"{found_line} Search/open it first; I will only make dashboard noise "
+            "when the link is actually broken, expired, banned, or a released part is clearly missing."
         ),
         allow_ai_rewrite=False,
         buttons=tuple(buttons),
@@ -940,8 +1148,8 @@ def build_availability_reply(
             text=(
                 "<b>Availability check</b>\n"
                 f"<blockquote>{escape(intent.title_query or 'that title')}</blockquote>\n"
-                "I could not confirm this one on TMDB, so I am not going to invent a "
-                "release date with a straight face."
+                "I could not confirm a reliable release date, so I am not going to invent "
+                "one with a straight face."
             ),
             allow_ai_rewrite=False,
             buttons=buttons,
@@ -952,7 +1160,7 @@ def build_availability_reply(
             text=(
                 "<b>Not out yet</b>\n"
                 f"<blockquote>{title}</blockquote>\n"
-                f"TMDB lists the movie release date as <b>{_date_text(availability.release_date)}</b>. "
+                f"Release date: <b>{_date_text(availability.release_date)}</b>. "
                 "So no, this is not a broken iBOX link. Time itself is the bottleneck. Rude."
             ),
             allow_ai_rewrite=False,
@@ -963,7 +1171,7 @@ def build_availability_reply(
             text=(
                 "<b>Not out yet</b>\n"
                 f"<blockquote>{title}</blockquote>\n"
-                f"TMDB says the show starts on <b>{_date_text(availability.first_air_date)}</b>. "
+                f"Expected start: <b>{_date_text(availability.first_air_date)}</b>. "
                 "I will not log that as an iBOX problem."
             ),
             allow_ai_rewrite=False,
@@ -974,7 +1182,7 @@ def build_availability_reply(
             text=(
                 "<b>Season not aired yet</b>\n"
                 f"<blockquote>{title} - {requested}</blockquote>\n"
-                f"TMDB lists this season for <b>{_date_text(availability.season_air_date)}</b>. "
+                f"Expected season date: <b>{_date_text(availability.season_air_date)}</b>. "
                 "No dashboard noise from me."
             ),
             allow_ai_rewrite=False,
@@ -988,7 +1196,7 @@ def build_availability_reply(
             text=(
                 "<b>Episode not aired yet</b>\n"
                 f"<blockquote>{title} - {requested}{episode_name}</blockquote>\n"
-                f"TMDB has the air date as <b>{_date_text(availability.episode_air_date)}</b>. "
+                f"Expected episode date: <b>{_date_text(availability.episode_air_date)}</b>. "
                 "The fix team cannot repair the future. Annoying, but tidy."
             ),
             allow_ai_rewrite=False,
@@ -999,16 +1207,15 @@ def build_availability_reply(
             text=(
                 "<b>No confirmed season yet</b>\n"
                 f"<blockquote>{title} - {requested}</blockquote>\n"
-                "TMDB does not list that season. I am not logging it as missing on iBOX "
-                "until the season actually exists somewhere outside our wishes."
+                "I do not see that season confirmed yet. I am not logging it as missing on iBOX "
+                "until it exists somewhere outside our wishes."
             ),
             allow_ai_rewrite=False,
             buttons=buttons,
         )
     if state == "episode_unlisted":
         count_text = (
-            f" TMDB currently lists <b>{availability.season_episode_count}</b> episode(s) "
-            "for that season."
+            f" Current season count I can verify: <b>{availability.season_episode_count}</b> episode(s)."
             if availability.season_episode_count is not None
             else ""
         )
@@ -1016,7 +1223,7 @@ def build_availability_reply(
             text=(
                 "<b>Episode not listed</b>\n"
                 f"<blockquote>{title} - {requested}</blockquote>\n"
-                f"TMDB does not list that episode yet.{count_text} "
+                f"I cannot verify that episode yet.{count_text} "
                 "I am keeping this out of the broken-link pile."
             ),
             allow_ai_rewrite=False,
@@ -1027,7 +1234,7 @@ def build_availability_reply(
             text=(
                 "<b>Release date unclear</b>\n"
                 f"<blockquote>{title} - {requested}</blockquote>\n"
-                "TMDB knows the title, but it does not have a usable air date for that part yet. "
+                "I can identify the title, but not a usable air date for that part yet. "
                 "I am not logging it as an iBOX issue."
             ),
             allow_ai_rewrite=False,
@@ -1043,7 +1250,7 @@ def build_availability_reply(
         status = (
             f"It is listed as released/aired on <b>{_date_text(date_value)}</b>."
             if date_value
-            else f"TMDB status: <code>{escape(availability.status or 'unknown')}</code>."
+            else f"Current status: <code>{escape(availability.status or 'unknown')}</code>."
         )
         return SupportReply(
             text=(
@@ -1068,10 +1275,10 @@ def build_log_vetting_reply(
     if suggested_title:
         suggestion = escape(suggested_title)
         buttons.append(
-            SupportButton(
-                text="Search iBOX",
-                url=search_url(settings, suggested_title, intent.category_hint),
-            )
+                SupportButton(
+                    text="Search ibox-tv.com",
+                    url=search_url(settings, suggested_title, intent.category_hint),
+                )
         )
         text = (
             "<b>Quick check</b>\n"
@@ -1084,7 +1291,7 @@ def build_log_vetting_reply(
         if intent.title_query:
             buttons.append(
                 SupportButton(
-                    text="Search iBOX",
+                    text="Search ibox-tv.com",
                     url=search_url(settings, intent.title_query, intent.category_hint),
                 )
             )
@@ -1213,13 +1420,13 @@ def build_support_reply(
                 url = search_url(settings, intent.title_query, intent.category_hint)
                 return SupportReply(
                     text=(
-                        "<b>Search iBOX TV</b>\n"
+                        "<b>Search ibox-tv.com</b>\n"
                         f"<blockquote>{escape(intent.title_query)}</blockquote>\n"
                         "I cannot see the website database from here yet, so use the search button."
                     ),
                     allow_ai_rewrite=False,
                     buttons=(
-                        SupportButton(text="Search iBOX", url=url),
+                        SupportButton(text="Search ibox-tv.com", url=url),
                         SupportButton(text="Tutorial", callback_data="support:tutorial"),
                         SupportButton(text="Solved", callback_data="support:solved"),
                     ),
@@ -1235,15 +1442,6 @@ def build_support_reply(
                     "unknown_tv_date",
                 }:
                     title = escape(availability.title or intent.title_query)
-                    date_value = (
-                        availability.episode_air_date
-                        or availability.season_air_date
-                        or availability.release_date
-                        or availability.first_air_date
-                    )
-                    date_line = (
-                        f"\nTMDB date: <b>{_date_text(date_value)}</b>." if date_value else ""
-                    )
                     count_line = (
                         f"\nRequest count: <b>{occurrence_count}</b>."
                         if occurrence_count and occurrence_count > 1
@@ -1253,8 +1451,8 @@ def build_support_reply(
                         text=(
                             "<b>Request logged</b>\n"
                             f"<blockquote>{title} - {escape(_requested_part_label(intent) or 'full title')}</blockquote>\n"
-                            f"TMDB says this exists, but I do not see the requested part in iBOX yet."
-                            f"{date_line}{count_line}"
+                            "I do not see the requested part on ibox-tv.com yet, so I have "
+                            f"added it to the request pile.{count_line}"
                         ),
                         allow_ai_rewrite=False,
                         buttons=_availability_buttons(
@@ -1272,7 +1470,7 @@ def build_support_reply(
                     ),
                     buttons=(
                         SupportButton(
-                            text="Search iBOX",
+                            text="Search ibox-tv.com",
                             url=search_url(settings, intent.title_query, intent.category_hint),
                         ),
                         SupportButton(text="Tutorial", callback_data="support:tutorial"),
@@ -1285,7 +1483,7 @@ def build_support_reply(
                 ),
                 buttons=(
                     SupportButton(
-                        text="Search iBOX",
+                        text="Search ibox-tv.com",
                         url=search_url(settings, intent.title_query, intent.category_hint),
                     ),
                     SupportButton(text="Tutorial", callback_data="support:tutorial"),
@@ -1301,9 +1499,8 @@ def build_support_reply(
                 text=(
                     "<b>Availability check</b>\n"
                     f"<blockquote>{title}</blockquote>\n"
-                    f"I can see <b>{escape(item.display_title)}</b> in the iBOX catalog. "
-                    "I do not have a live release-calendar feed connected yet, so I will not log "
-                    "this as a broken-link issue.\n"
+                    f"I can see <b>{escape(item.display_title)}</b> on ibox-tv.com. "
+                    "No need to log this as a broken-link issue.\n"
                     f'<a href="{escape(url, quote=True)}">Open the current iBOX item</a>'
                 ),
                 allow_ai_rewrite=False,
@@ -1316,14 +1513,14 @@ def build_support_reply(
             text=(
                 "<b>Availability check</b>\n"
                 f"<blockquote>{title}</blockquote>\n"
-                "I do not see it in the local iBOX catalog cache yet. This looks like an "
+                "I do not see it on ibox-tv.com yet. This looks like an "
                 "availability/release question, not a broken-link report, so I am not adding "
                 "it to the fix dashboard."
             ),
             allow_ai_rewrite=False,
             buttons=(
                 SupportButton(
-                    text="Search iBOX",
+                    text="Search ibox-tv.com",
                     url=search_url(settings, intent.title_query or "", intent.category_hint),
                 ),
                 SupportButton(text="Tutorial", callback_data="support:tutorial"),
@@ -1368,7 +1565,7 @@ def build_support_reply(
             ),
             buttons=(
                 SupportButton(
-                    text="Search iBOX",
+                    text="Search ibox-tv.com",
                     url=search_url(settings, intent.title_query or "", intent.category_hint),
                 ),
                 SupportButton(text="Solved", callback_data="support:solved"),
@@ -1386,10 +1583,8 @@ def _availability_buttons(
     buttons: list[SupportButton] = []
     if matches:
         buttons.append(SupportButton(text="Open iBOX", url=item_url(settings, matches[0])))
-    if availability.tmdb_url:
-        buttons.append(SupportButton(text="Open TMDB", url=availability.tmdb_url))
     buttons.append(
-        SupportButton(text="Search iBOX", url=search_url(settings, availability.title or ""))
+        SupportButton(text="Search ibox-tv.com", url=search_url(settings, availability.title or ""))
     )
     buttons.append(SupportButton(text="Solved", callback_data="support:solved"))
     return tuple(buttons)
@@ -1426,13 +1621,15 @@ def _catalog_item_season_ranges(item: IboxItem) -> list[tuple[int, int]]:
 def _season_ranges_from_text(value: str) -> list[tuple[int, int]]:
     ranges: list[tuple[int, int]] = []
     for match in re.finditer(
-        r"\b(?:season|series)\s*0*(\d{1,3})" r"(?:\s*(?:-|\u2013|to)\s*0*(\d{1,3}))?\b",
+        rf"\b(?:season|series)\s*({SEASON_TOKEN_PATTERN})"
+        rf"(?:\s*(?:-|\u2013|to|and|&)\s*(?:season|series)?\s*({SEASON_TOKEN_PATTERN}))?\b",
         value,
         flags=re.IGNORECASE,
     ):
-        start = int(match.group(1))
-        end = int(match.group(2) or start)
-        ranges.append((min(start, end), max(start, end)))
+        start = _number_token_to_int(match.group(1))
+        end = _number_token_to_int(match.group(2) or str(start or ""))
+        if start is not None and end is not None:
+            ranges.append((min(start, end), max(start, end)))
     for match in re.finditer(r"\bs0*(\d{1,3})\s*e0*\d{1,4}\b", value, flags=re.IGNORECASE):
         season = int(match.group(1))
         ranges.append((season, season))

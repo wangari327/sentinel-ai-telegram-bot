@@ -11,6 +11,7 @@ from app.support.assistant import (
     availability_blocks_logging,
     availability_confirms_requested_part_ready,
     build_availability_reply,
+    build_catalog_base_found_reply,
     build_support_reply,
     catalog_requested_season_is_ahead,
     catalog_season_bounds,
@@ -86,6 +87,29 @@ def test_title_with_season_range_keeps_clean_title_and_range() -> None:
     assert title_query_with_requested_part(intent) == "Merlin Season 1-5"
 
 
+def test_title_with_word_number_season_keeps_clean_title() -> None:
+    intent = detect_support_intent("24 season two", allow_bare_title=True)
+
+    assert intent is not None
+    assert intent.kind == "request"
+    assert intent.title_query == "24"
+    assert intent.season_number == 2
+
+
+def test_request_with_multiple_seasons_and_commentary_keeps_title_only() -> None:
+    intent = detect_support_intent(
+        "I'd like to request Adults Season 1 and Season 2 (which is currently airing)",
+        allow_bare_title=True,
+    )
+
+    assert intent is not None
+    assert intent.kind == "request"
+    assert intent.title_query == "Adults"
+    assert intent.season_number == 1
+    assert intent.season_end_number == 2
+    assert title_query_with_requested_part(intent) == "Adults Season 1-2"
+
+
 def test_bare_title_with_media_hint_strips_hint_and_requests() -> None:
     intent = detect_support_intent("ER Series", allow_bare_title=True)
 
@@ -101,6 +125,14 @@ def test_bare_title_with_year_is_treated_as_request() -> None:
     assert intent is not None
     assert intent.kind == "request"
     assert intent.title_query == "scam 2004"
+
+
+def test_parenthetical_year_is_disambiguation_not_title_text() -> None:
+    intent = detect_support_intent("NCIS (2003)", allow_bare_title=True)
+
+    assert intent is not None
+    assert intent.kind == "bare_title"
+    assert intent.title_query == "NCIS"
 
 
 def test_bare_title_with_polite_suffix_is_clean_request() -> None:
@@ -329,6 +361,48 @@ def test_requested_season_filter_understands_catalog_ranges() -> None:
     assert filter_matches_for_requested_part([item], missing) == []
 
 
+def test_full_show_catalog_row_satisfies_requested_season() -> None:
+    item = IboxItem(
+        id=24,
+        title="24",
+        episode_title=None,
+        category="tv",
+        slug="24",
+        year=2001,
+        rating=8.4,
+        download_link=None,
+    )
+    intent = SupportIntent(
+        kind="request",
+        title_query="24",
+        category_hint="tv",
+        season_number=2,
+    )
+
+    assert filter_matches_for_requested_part([item], intent) == [item]
+
+
+def test_specific_other_season_row_does_not_satisfy_older_season() -> None:
+    item = IboxItem(
+        id=88,
+        title="Reacher",
+        episode_title="Season 4 Episode 1-5",
+        category="tv",
+        slug="reacher-season-4-episode-1-5",
+        year=2026,
+        rating=8.1,
+        download_link=None,
+    )
+    intent = SupportIntent(
+        kind="request",
+        title_query="Reacher",
+        category_hint="tv",
+        season_number=1,
+    )
+
+    assert filter_matches_for_requested_part([item], intent) == []
+
+
 def test_catalog_season_bounds_detects_latest_known_season() -> None:
     items = [
         IboxItem(
@@ -414,8 +488,38 @@ def test_without_tvweb_db_request_points_to_search_page() -> None:
     reply = build_support_reply(intent=intent, matches=[], settings=settings)
 
     assert reply is not None
-    assert "Search iBOX TV" in reply.text
+    assert "Search ibox-tv.com" in reply.text
     assert any(button.url == "https://ibox-tv.com/?search=Severance" for button in reply.buttons)
+
+
+def test_base_catalog_reply_does_not_claim_exact_season_missing() -> None:
+    settings = load_settings({"TVWEB_SITE_BASE_URL": "https://ibox-tv.com"})
+    item = IboxItem(
+        id=88,
+        title="Reacher",
+        episode_title="Season 4 Episode 1-5",
+        category="tv",
+        slug="reacher-season-4-episode-1-5",
+        year=2026,
+        rating=8.1,
+        download_link=None,
+    )
+    intent = SupportIntent(
+        kind="request",
+        title_query="Reacher",
+        category_hint="tv",
+        season_number=1,
+    )
+
+    reply = build_catalog_base_found_reply(
+        intent=intent,
+        catalog_matches=[item],
+        settings=settings,
+    )
+
+    assert "Found on ibox-tv.com" in reply.text
+    assert "not in the catalog" not in reply.text
+    assert "Open current" in [button.text for button in reply.buttons]
 
 
 def test_search_url_uses_category_domains() -> None:
@@ -583,7 +687,7 @@ def test_support_responder_selects_hcnsec_chat_config() -> None:
 
 async def test_support_responder_uses_factual_reply_when_disabled() -> None:
     settings = load_settings({"SUPPORT_AI_REPLIES": "false"})
-    factual = SupportReply(text="Search iBOX TV here:\nhttps://ibox-tv.com/?search=Dune")
+    factual = SupportReply(text="Search ibox-tv.com here:\nhttps://ibox-tv.com/?search=Dune")
     intent = detect_support_intent("where can I find Dune")
 
     text = await render_support_reply(

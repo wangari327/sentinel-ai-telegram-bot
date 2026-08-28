@@ -39,6 +39,7 @@ from app.support.assistant import (
     availability_confirms_requested_part_ready,
     build_availability_reply,
     build_catalog_ahead_of_release_reply,
+    build_catalog_base_found_reply,
     build_log_vetting_reply,
     build_support_reply,
     catalog_requested_season_is_ahead,
@@ -244,23 +245,50 @@ async def maybe_handle_support_message(
         )
 
     catalog_matches_without_part: list[IboxItem] = []
-    if not matches and intent.kind in {"request", "issue"} and intent.season_number is not None:
+    if (
+        not matches
+        and intent.kind in {"request", "issue"}
+        and (intent.season_number is not None or intent.episode_number is not None)
+    ):
         catalog_matches_without_part = await _search_catalog_without_requested_part(
             session=session,
             settings=settings,
             intent=intent,
         )
-        if not availability_confirms_requested_part_ready(
-            intent, availability
-        ) and catalog_requested_season_is_ahead(
+        requested_season_is_ahead = catalog_requested_season_is_ahead(
             intent=intent,
             catalog_matches=catalog_matches_without_part,
+        )
+        requested_part_is_ready = availability_confirms_requested_part_ready(intent, availability)
+        if (
+            not requested_part_is_ready
+            and requested_season_is_ahead
         ):
             reply = build_catalog_ahead_of_release_reply(
                 intent=intent,
                 catalog_matches=catalog_matches_without_part,
                 settings=settings,
                 availability=availability,
+            )
+            await _send_support_reply(
+                message=message,
+                bot=bot,
+                session=session,
+                settings=settings,
+                group=group,
+                normalized=normalized,
+                intent=intent,
+                matches=catalog_matches_without_part,
+                reply=reply,
+            )
+            return True
+        if catalog_matches_without_part and intent.kind == "request" and not (
+            requested_part_is_ready and requested_season_is_ahead
+        ):
+            reply = build_catalog_base_found_reply(
+                intent=intent,
+                catalog_matches=catalog_matches_without_part,
+                settings=settings,
             )
             await _send_support_reply(
                 message=message,

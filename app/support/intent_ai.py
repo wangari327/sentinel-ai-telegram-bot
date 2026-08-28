@@ -11,8 +11,8 @@ from app.config import Settings
 from app.support.assistant import (
     SupportIntent,
     extract_season_episode_ranges,
-    support_title_query_is_catalog_topic,
     support_title_query_is_allowed,
+    support_title_query_is_catalog_topic,
 )
 from app.support.ibox_search import normalize_title_query
 from app.support.responder import select_support_chat_config

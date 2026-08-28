@@ -572,7 +572,7 @@ async def handle_request_management_callback(callback: CallbackQuery) -> None:
             repositories.set_support_request_status(session, request_id, "resolved")
             notice_text = (
                 f"{_mention_user(request.sender_user_id, 'quick update')}: "
-                f"{escape(_request_title(request))} has been handled. Search iBOX again."
+                f"{escape(_request_title(request))} has been handled. Search ibox-tv.com again."
             )
             notice = await send_ephemeral_message(
                 bot=callback.bot,

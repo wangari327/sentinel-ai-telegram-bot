@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import asyncio
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.bot.keyboards import support_reply_keyboard
@@ -16,13 +18,16 @@ from app.support.assistant import (
     SupportIntent,
     SupportReply,
     availability_blocks_logging,
+    availability_confirms_requested_part_ready,
     build_availability_reply,
+    build_catalog_base_found_reply,
     build_support_reply,
+    catalog_requested_season_is_ahead,
     detect_support_intent,
     filter_matches_for_requested_part,
     title_query_with_requested_part,
 )
-from app.support.ibox_search import IboxItem, search_tvweb_cache
+from app.support.ibox_search import IboxItem, search_tvweb, search_tvweb_cache
 from app.support.intent_ai import (
     choose_support_merge_candidate_with_ai,
     classify_support_intent_with_ai,
@@ -246,14 +251,13 @@ async def handle_private_user_support(
         return True
 
     matches = []
+    catalog_matches_without_part: list[IboxItem] = []
     if intent.title_query:
-        matches = search_tvweb_cache(
+        matches = await _search_private_catalog(
             session=session,
             settings=settings,
-            query=intent.title_query,
-            category=intent.category_hint,
+            intent=intent,
         )
-        matches = filter_matches_for_requested_part(matches, intent)
 
     availability = None
     if intent.kind in {"release", "request", "issue"} and intent.title_query:
@@ -283,6 +287,47 @@ async def handle_private_user_support(
                     tutorial_chat_id=group.telegram_chat_id,
                 )
                 return True
+
+    if (
+        not matches
+        and intent.kind in {"request", "bare_title", "issue"}
+        and (intent.season_number is not None or intent.episode_number is not None)
+    ):
+        catalog_matches_without_part = await _search_private_catalog(
+            session=session,
+            settings=settings,
+            intent=replace(
+                intent,
+                season_number=None,
+                season_end_number=None,
+                episode_number=None,
+                episode_end_number=None,
+            ),
+        )
+        requested_season_is_ahead = catalog_requested_season_is_ahead(
+            intent=intent,
+            catalog_matches=catalog_matches_without_part,
+        )
+        requested_part_is_ready = availability_confirms_requested_part_ready(intent, availability)
+        if catalog_matches_without_part and intent.kind in {"request", "bare_title"} and not (
+            requested_part_is_ready and requested_season_is_ahead
+        ):
+            reply = build_catalog_base_found_reply(
+                intent=intent,
+                catalog_matches=catalog_matches_without_part,
+                settings=settings,
+            )
+            await _answer_support_reply(
+                message=message,
+                session=session,
+                settings=settings,
+                intent=intent,
+                matches=catalog_matches_without_part,
+                normalized=normalized,
+                reply=reply,
+                tutorial_chat_id=group.telegram_chat_id,
+            )
+            return True
 
     reply_intent = _private_reply_intent(intent, matches)
     occurrence_count = await _record_private_support_intent(
@@ -317,6 +362,44 @@ async def handle_private_user_support(
         tutorial_chat_id=group.telegram_chat_id,
     )
     return True
+
+
+async def _search_private_catalog(
+    *,
+    session: Session,
+    settings: Settings,
+    intent: SupportIntent,
+) -> list[IboxItem]:
+    if not intent.title_query:
+        return []
+    has_requested_part = intent.season_number is not None or intent.episode_number is not None
+    cache_matches = search_tvweb_cache(
+        session=session,
+        settings=settings,
+        query=intent.title_query,
+        category=intent.category_hint,
+        limit=12 if has_requested_part else 3,
+    )
+    filtered = filter_matches_for_requested_part(cache_matches, intent)
+    if filtered:
+        return filtered[:3]
+    if settings.tvweb_database_url:
+        try:
+            direct_matches = await asyncio.to_thread(
+                search_tvweb,
+                settings=settings,
+                query=intent.title_query,
+                category=intent.category_hint,
+                limit=12 if has_requested_part else 3,
+            )
+        except SQLAlchemyError:
+            direct_matches = []
+        filtered = filter_matches_for_requested_part(direct_matches, intent)
+        if filtered:
+            return filtered[:3]
+        if not has_requested_part and direct_matches:
+            return direct_matches[:3]
+    return [] if has_requested_part else cache_matches[:3]
 
 
 async def _answer_support_reply(

@@ -637,6 +637,174 @@ async def test_pipeline_replies_to_media_hint_short_title_from_cache() -> None:
     assert "E.R." in str(bot.sent[0]["text"])
 
 
+async def test_pipeline_strips_parenthetical_year_before_catalog_lookup() -> None:
+    settings = load_settings(
+        {
+            "AUTHORIZED_CHAT_IDS": "-1001",
+            "DEFAULT_GROUP_MODE": "normal",
+            "AI_PROVIDER": "rules_only",
+            "AI_FALLBACK_PROVIDER": "rules_only",
+            "SUPPORT_ENABLED": "true",
+            "SUPPORT_AI_REPLIES": "false",
+            "SUPPORT_REPLY_CLEANUP_SECONDS": "0",
+        }
+    )
+    bot = FakeBot()
+    message = FakeMessage(text="NCIS (2003)")
+
+    with _session() as session:
+        group = repositories.get_or_create_group(
+            session,
+            telegram_chat_id=-1001,
+            title="Series 2022 Requests",
+            chat_type="supergroup",
+            settings=settings,
+        )
+        group.setup_completed = True
+        session.add(
+            TvwebCatalogItem(
+                tvweb_id=124,
+                title="NCIS",
+                title_key="ncis",
+                episode_title=None,
+                category="tv",
+                slug="ncis",
+                year=2003,
+                rating=8.0,
+                download_link=None,
+            )
+        )
+
+        result = await process_group_message(
+            message=message,
+            bot=bot,
+            session=session,
+            settings=settings,
+            permissions=FakePermissions(),
+            sender_is_admin=False,
+        )
+        request = session.scalar(select(SupportRequest))
+
+    assert result.support_replied
+    assert request is None
+    assert bot.sent
+    assert "Found on ibox-tv.com" in str(bot.sent[0]["text"])
+    assert "NCIS" in str(bot.sent[0]["text"])
+
+
+async def test_pipeline_word_number_season_uses_whole_show_catalog_row() -> None:
+    settings = load_settings(
+        {
+            "AUTHORIZED_CHAT_IDS": "-1001",
+            "DEFAULT_GROUP_MODE": "normal",
+            "AI_PROVIDER": "rules_only",
+            "AI_FALLBACK_PROVIDER": "rules_only",
+            "SUPPORT_ENABLED": "true",
+            "SUPPORT_AI_REPLIES": "false",
+            "SUPPORT_REPLY_CLEANUP_SECONDS": "0",
+        }
+    )
+    bot = FakeBot()
+    message = FakeMessage(text="24 season two")
+
+    with _session() as session:
+        group = repositories.get_or_create_group(
+            session,
+            telegram_chat_id=-1001,
+            title="Series 2022 Requests",
+            chat_type="supergroup",
+            settings=settings,
+        )
+        group.setup_completed = True
+        session.add(
+            TvwebCatalogItem(
+                tvweb_id=24,
+                title="24",
+                title_key="24",
+                episode_title=None,
+                category="tv",
+                slug="24",
+                year=2001,
+                rating=8.4,
+                download_link=None,
+            )
+        )
+
+        result = await process_group_message(
+            message=message,
+            bot=bot,
+            session=session,
+            settings=settings,
+            permissions=FakePermissions(),
+            sender_is_admin=False,
+        )
+        request = session.scalar(select(SupportRequest))
+        open_request = session.scalar(select(SupportRequest).where(SupportRequest.status == "open"))
+
+    assert result.support_replied
+    assert request is not None
+    assert request.status == "found"
+    assert open_request is None
+    assert bot.sent
+    assert "Found on ibox-tv.com" in str(bot.sent[0]["text"])
+    assert "Duck Dodgers" not in str(bot.sent[0]["text"])
+
+
+async def test_pipeline_base_show_match_does_not_log_older_season_request() -> None:
+    settings = load_settings(
+        {
+            "AUTHORIZED_CHAT_IDS": "-1001",
+            "DEFAULT_GROUP_MODE": "normal",
+            "AI_PROVIDER": "rules_only",
+            "AI_FALLBACK_PROVIDER": "rules_only",
+            "SUPPORT_ENABLED": "true",
+            "SUPPORT_AI_REPLIES": "false",
+            "SUPPORT_REPLY_CLEANUP_SECONDS": "0",
+        }
+    )
+    bot = FakeBot()
+    message = FakeMessage(text="Reacher season 1")
+
+    with _session() as session:
+        group = repositories.get_or_create_group(
+            session,
+            telegram_chat_id=-1001,
+            title="Series 2022 Requests",
+            chat_type="supergroup",
+            settings=settings,
+        )
+        group.setup_completed = True
+        session.add(
+            TvwebCatalogItem(
+                tvweb_id=88,
+                title="Reacher",
+                title_key="reacher",
+                episode_title="Season 4 Episode 1-5",
+                category="tv",
+                slug="reacher-season-4-episode-1-5",
+                year=2026,
+                rating=8.1,
+                download_link=None,
+            )
+        )
+
+        result = await process_group_message(
+            message=message,
+            bot=bot,
+            session=session,
+            settings=settings,
+            permissions=FakePermissions(),
+            sender_is_admin=False,
+        )
+        request = session.scalar(select(SupportRequest))
+
+    assert result.support_replied
+    assert request is None
+    assert bot.sent
+    assert "Found on ibox-tv.com" in str(bot.sent[0]["text"])
+    assert "request pile" not in str(bot.sent[0]["text"])
+
+
 async def test_pipeline_replies_to_year_title_request_even_when_not_cached(monkeypatch) -> None:
     settings = load_settings(
         {

@@ -117,7 +117,7 @@ For iBOX lookup, copy the website `.env` value named `DATABASE_URL` into Sentine
 
 `TUTORIAL_DUMP_CHAT_ID=-1003743973576` is the default dump channel. Make the bot an admin in that channel, then forward the tutorial video/document to the bot privately with `/tutorial_save` in the caption.
 
-Sentinel group support lookups search the local iBOX catalog cache only, so normal chat traffic does not hammer the website database. By default, the bot does not refresh that cache on startup; it refreshes at the UTC times in `TVWEB_CACHE_REFRESH_TIMES`, then every `TVWEB_CACHE_REFRESH_INTERVAL_MINUTES` after a successful refresh. Use the private owner-console Refresh catalog and Support status buttons to refresh manually and see cache count, last refresh, and any refresh error.
+Sentinel does not query the website database for every group message. Normal chatter stays in the moderation path; only support-looking messages hit the support assistant. The assistant searches the local iBOX catalog cache first and only falls through to `TVWEB_DATABASE_URL` for clear misses, so normal chat traffic does not hammer the website database. By default, the bot does not refresh that cache on startup; it refreshes at the UTC times in `TVWEB_CACHE_REFRESH_TIMES`, then every `TVWEB_CACHE_REFRESH_INTERVAL_MINUTES` after a successful refresh. Use the private owner-console Refresh catalog and Support status buttons to refresh manually and see cache count, last refresh, and any refresh error.
 
 With `SUPPORT_AI_INTENT_ENABLED=true`, Sentinel lets the configured AI provider decide whether fuzzy group messages are support-worthy instead of relying only on phrase parsing. Lower `SUPPORT_AI_INTENT_THRESHOLD` if it misses too much; raise it if it starts answering ordinary chatter.
 
@@ -131,9 +131,9 @@ With `PRIVATE_SUPPORT_ENABLED=true`, normal users can DM the bot for iBOX help a
 
 Press Start in the bot DM as an owner admin to use the button console. Groups can be authorized, deauthorized, or removed from buttons; open support issues and requests can be marked Fixed or Dismissed. Fixed items leave the open dashboard and send a durable group update tagging the original reporter when possible. Starting a fresh `/start`, `/panel`, support, or training flow cleans up older open bot panels in that same private chat.
 
-Duplicate support reports are merged before they reach the dashboard. Sentinel uses catalog matches, normalized title variants, and the configured AI provider to decide when reports such as "Fix Lioness" and "Lioness link expired" are the same underlying issue.
+Duplicate support reports are merged before they reach the dashboard. Sentinel uses catalog matches, normalized title variants, and the configured AI provider to decide when reports such as "Fix Lioness" and "Lioness link expired" are the same underlying issue. If a user asks for a specific older season and Sentinel finds the base show on ibox-tv.com, it answers with the current/search result instead of logging a false missing request, because older files may already live in the channel/file store.
 
-TMDB is only queried for messages that already look like support requests, issues, or release questions, and responses are cached in memory for `TMDB_CACHE_TTL_SECONDS`. This lets Sentinel answer "not aired yet" instead of logging future episodes as fake broken links.
+Release metadata is only queried for messages that already look like support requests, issues, or release questions, and responses are cached in memory for `TMDB_CACHE_TTL_SECONDS`. This lets Sentinel answer "not aired yet" instead of logging future episodes as fake broken links.
 
 ## 4. Docker Compose Deployment
 

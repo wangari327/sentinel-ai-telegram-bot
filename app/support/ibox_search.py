@@ -66,6 +66,7 @@ def search_url(settings: Settings, query: str, category: str | None = None) -> s
 def normalize_title_query(value: str) -> str:
     value = re.sub(r"https?://\S+", " ", value)
     value = re.sub(r"@\w+", " ", value)
+    value = re.sub(r"\(\s*(?:19|20)\d{2}\s*\)", " ", value)
     value = re.sub(r"[^\w\s'&.-]+", " ", value, flags=re.UNICODE)
     value = re.sub(r"\s+", " ", value).strip(" .-")
     return value[:120]
@@ -83,7 +84,12 @@ def search_tvweb(
     clean_query = normalize_title_query(query)
     if len(clean_query) < 2:
         return []
-    params: dict[str, object] = {"query": f"%{clean_query}%", "limit": limit}
+    params: dict[str, object] = {
+        "query": f"%{clean_query}%",
+        "exact_query": clean_query,
+        "prefix_query": f"{clean_query}%",
+        "limit": limit,
+    }
     category_clause = ""
     if category:
         category_clause = "AND category = :category"
@@ -93,7 +99,11 @@ def search_tvweb(
         FROM tv_shows
         WHERE show_name ILIKE :query
         {category_clause}
-        ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST
+        ORDER BY
+            (lower(show_name) = lower(:exact_query)) DESC,
+            (lower(show_name) LIKE lower(:prefix_query)) DESC,
+            updated_at DESC NULLS LAST,
+            created_at DESC NULLS LAST
         LIMIT :limit
         """)
     with _engine(settings.tvweb_database_url).connect() as conn:
