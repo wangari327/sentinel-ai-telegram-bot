@@ -103,12 +103,20 @@ async def on_private_message(message: Message) -> None:
             return
         authorized = text.startswith("/authorize")
         with session_scope() as session:
-            repositories.set_group_authorized(
-                session,
-                telegram_chat_id=chat_id,
-                authorized=authorized,
-                settings=settings,
-            )
+            try:
+                repositories.set_group_authorized(
+                    session,
+                    telegram_chat_id=chat_id,
+                    authorized=authorized,
+                    settings=settings,
+                )
+            except ValueError:
+                await message.answer(
+                    "That looks like a private chat/user ID. I only authorize real groups "
+                    "or supergroups, because private DMs do not send site traffic and do "
+                    "not need moderation."
+                )
+                return
         await message.answer(f"Chat {chat_id} authorized={authorized}.")
         return
     if text.startswith("/tutorial_save"):

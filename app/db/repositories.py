@@ -27,6 +27,16 @@ from app.db.models import (
     UserViolation,
 )
 
+MODERATABLE_CHAT_TYPES = frozenset({"group", "supergroup"})
+
+
+def is_moderatable_chat_type(chat_type: str | None) -> bool:
+    return (chat_type or "").casefold() in MODERATABLE_CHAT_TYPES
+
+
+def is_moderatable_chat(chat_type: str | None, telegram_chat_id: int) -> bool:
+    return telegram_chat_id < 0 and is_moderatable_chat_type(chat_type)
+
 
 def get_or_create_user(session: Session, telegram_user: Any) -> User:
     telegram_user_id = int(getattr(telegram_user, "id", telegram_user))
@@ -54,20 +64,23 @@ def get_or_create_group(
     chat_type: str,
     settings: Settings,
 ) -> Group:
+    is_moderatable = is_moderatable_chat(chat_type, telegram_chat_id)
     group = session.scalar(select(Group).where(Group.telegram_chat_id == telegram_chat_id))
     if group is None:
         group = Group(
             telegram_chat_id=telegram_chat_id,
             title=title,
             type=chat_type,
-            authorized=settings.chat_is_allowlisted(telegram_chat_id),
+            authorized=is_moderatable and settings.chat_is_allowlisted(telegram_chat_id),
         )
         session.add(group)
         session.flush()
     else:
         group.title = title or group.title
         group.type = chat_type or group.type
-        if settings.chat_is_allowlisted(telegram_chat_id):
+        if not is_moderatable_chat(group.type, group.telegram_chat_id):
+            group.authorized = False
+        elif settings.chat_is_allowlisted(telegram_chat_id):
             group.authorized = True
     get_or_create_group_settings(session, group, settings)
     return group
@@ -104,6 +117,8 @@ def chat_is_authorized(group: Group | None, settings: Settings) -> bool:
     if not settings.require_authorized_chats:
         return True
     if group is None:
+        return False
+    if not is_moderatable_chat(group.type, group.telegram_chat_id):
         return False
     return bool(group.authorized or settings.chat_is_allowlisted(group.telegram_chat_id))
 
@@ -557,8 +572,14 @@ def _event_text_is_reviewable(text: str) -> bool:
     )
 
 
-def list_groups(session: Session) -> list[Group]:
-    return list(session.scalars(select(Group).order_by(Group.created_at.desc())).all())
+def list_groups(session: Session, *, include_private: bool = False) -> list[Group]:
+    query = select(Group).order_by(Group.created_at.desc())
+    if not include_private:
+        query = query.where(
+            Group.telegram_chat_id < 0,
+            Group.type.in_(tuple(MODERATABLE_CHAT_TYPES)),
+        )
+    return list(session.scalars(query).all())
 
 
 def get_group_by_id(session: Session, group_id: int) -> Group | None:
@@ -569,6 +590,8 @@ def set_group_authorized_by_id(session: Session, group_id: int, authorized: bool
     group = get_group_by_id(session, group_id)
     if group is None:
         return None
+    if authorized and not is_moderatable_chat(group.type, group.telegram_chat_id):
+        raise ValueError("only group and supergroup chats can be authorized")
     group.authorized = authorized
     session.flush()
     return group
@@ -582,6 +605,8 @@ def set_group_authorized(
     settings: Settings,
     title: str | None = None,
 ) -> Group:
+    if authorized and telegram_chat_id > 0:
+        raise ValueError("private chat IDs cannot be authorized as moderation groups")
     group = get_or_create_group(
         session,
         telegram_chat_id=telegram_chat_id,

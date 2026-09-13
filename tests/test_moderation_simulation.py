@@ -11,6 +11,7 @@ from app.config import load_settings
 from app.db import repositories
 from app.db.models import Base, ModerationEvent, SupportIssue, SupportRequest, TvwebCatalogItem
 from app.moderation import pipeline
+from app.moderation.ai_classifier import ClassificationResult
 from app.moderation.pipeline import process_group_message
 from app.support.ibox_search import IboxItem
 from app.support.intent_ai import SupportLogVet
@@ -236,6 +237,75 @@ async def test_pipeline_deletes_current_adult_story_caption_campaign() -> None:
     assert result.decision is not None
     assert result.decision.action == "delete"
     assert bot.deleted == [(-1001, 101)]
+
+
+async def test_pipeline_does_not_turn_adult_link_spam_into_support_issue(monkeypatch) -> None:
+    settings = load_settings(
+        {
+            "AUTHORIZED_CHAT_IDS": "-1001",
+            "DEFAULT_GROUP_MODE": "monitor_only",
+            "AI_PROVIDER": "hcnsec",
+            "AI_FALLBACK_PROVIDER": "rules_only",
+            "SUPPORT_ENABLED": "true",
+            "SUPPORT_AI_REPLIES": "false",
+            "SUPPORT_REPLY_CLEANUP_SECONDS": "0",
+        }
+    )
+
+    class BadProvider:
+        async def classify(self, request: object) -> ClassificationResult:
+            return ClassificationResult(
+                label="not_spam",
+                confidence=0.92,
+                risk_reasons=[],
+                safe_reasons=["bad provider missed the adult lure"],
+                detected_lure_type=None,
+                recommended_action="allow",
+                needs_training_review=False,
+                provider_name="bad_provider",
+                model_name="bad-model",
+            )
+
+    monkeypatch.setattr(pipeline, "get_ai_provider", lambda settings: BadProvider())
+    bot = FakeBot()
+    message = FakeMessage(
+        text=(
+            "Stunning OnlyFans dancer leaked nudes out now\n"
+            "Removed everywhere else already 😈\n\n"
+            "https://share.google/nWw1kmc1MMoZXVyBw"
+        )
+    )
+
+    with _session() as session:
+        group = repositories.get_or_create_group(
+            session,
+            telegram_chat_id=-1001,
+            title="Series 2022 Requests",
+            chat_type="supergroup",
+            settings=settings,
+        )
+        group.setup_completed = True
+        result = await process_group_message(
+            message=message,
+            bot=bot,
+            session=session,
+            settings=settings,
+            permissions=FakePermissions(),
+            sender_is_admin=False,
+        )
+        issue = session.scalar(select(SupportIssue))
+        request = session.scalar(select(SupportRequest))
+        event = session.scalar(select(ModerationEvent))
+
+    assert result.decision is not None
+    assert result.decision.action == "monitor"
+    assert not result.support_replied
+    assert issue is None
+    assert request is None
+    assert event is not None
+    assert event.final_score >= 0.55
+    assert "adult" in " ".join(event.reasons).casefold()
+    assert bot.deleted == []
 
 
 async def test_pipeline_deletes_sexual_solicitation_without_url() -> None:

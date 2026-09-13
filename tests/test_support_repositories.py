@@ -150,6 +150,73 @@ def test_group_authorization_by_id_and_remove() -> None:
         assert repositories.get_group_by_id(session, group.id) is None
 
 
+def test_private_chat_records_are_not_authorizable_groups() -> None:
+    settings = load_settings({})
+    with _session() as session:
+        private = repositories.get_or_create_group(
+            session,
+            telegram_chat_id=762308466,
+            title="Private support user",
+            chat_type="private",
+            settings=settings,
+        )
+        real_group = repositories.get_or_create_group(
+            session,
+            telegram_chat_id=-1001,
+            title="Real Group",
+            chat_type="supergroup",
+            settings=settings,
+        )
+
+        assert repositories.list_groups(session) == [real_group]
+        assert not repositories.chat_is_authorized(private, settings)
+
+        try:
+            repositories.set_group_authorized_by_id(session, private.id, True)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("private chat should not be authorizable")
+
+
+def test_positive_id_supergroup_records_are_hidden_and_not_authorizable() -> None:
+    settings = load_settings({})
+    with _session() as session:
+        stale = repositories.get_or_create_group(
+            session,
+            telegram_chat_id=762308466,
+            title="Old bad authorization",
+            chat_type="supergroup",
+            settings=settings,
+        )
+
+        assert repositories.list_groups(session) == []
+        assert not repositories.chat_is_authorized(stale, settings)
+
+        try:
+            repositories.set_group_authorized_by_id(session, stale.id, True)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("positive-ID group record should not be authorizable")
+
+
+def test_authorize_command_rejects_positive_private_chat_ids() -> None:
+    settings = load_settings({})
+    with _session() as session:
+        try:
+            repositories.set_group_authorized(
+                session,
+                telegram_chat_id=762308466,
+                authorized=True,
+                settings=settings,
+            )
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("positive private chat IDs should not be authorizable")
+
+
 def test_reviewable_moderation_history_filters_harmless_allows() -> None:
     settings = load_settings({})
     with _session() as session:

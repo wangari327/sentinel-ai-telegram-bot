@@ -958,6 +958,34 @@ def _maybe_escalate_repeat_violation(
     )
 
 
+def _support_allowed_after_moderation(
+    *,
+    ai_result: ClassificationResult,
+    features: object,
+    final_score: float,
+    group_settings: object,
+) -> bool:
+    if ai_result.label != "not_spam":
+        return False
+    suspicious_low = float(getattr(group_settings, "suspicious_low_threshold", 0.55))
+    if final_score >= suspicious_low:
+        return False
+    spamish_flags = (
+        "contains_porn_bait",
+        "contains_sexual_solicitation",
+        "contains_adult_spam_cta",
+        "contains_urgency_lure",
+        "contains_suspicious_adult_story_lure",
+        "contains_private_solicitation",
+        "contains_crypto_scam",
+        "contains_fake_reward",
+        "contains_telegram_login_phishing_language",
+        "high_risk_link",
+        "domain_blocked",
+    )
+    return not any(bool(getattr(features, flag, False)) for flag in spamish_flags)
+
+
 def _moderation_delete_notice_text(
     *,
     sender: SenderContext,
@@ -1236,7 +1264,12 @@ async def process_group_message(
             domains=normalized.domains,
         )
 
-    if not decision.delete and not decision.ban and ai_result.label == "not_spam":
+    if not decision.delete and not decision.ban and _support_allowed_after_moderation(
+        ai_result=ai_result,
+        features=features,
+        final_score=score.final_score,
+        group_settings=group_settings,
+    ):
         support_replied = await maybe_handle_support_message(
             message=message,
             bot=bot,
