@@ -383,8 +383,13 @@ async def handle_group_management_callback(callback: CallbackQuery) -> None:
 
     with session_scope() as session:
         if action == "allow":
-            group = repositories.set_group_authorized_by_id(session, group_id, True)
-            result = "authorized"
+            group = repositories.get_group_by_id(session, group_id)
+            if group is not None and not repositories.is_moderatable_chat_type(group.type):
+                group.authorized = False
+                result = "ignored: private chat records cannot be authorized"
+            else:
+                group = repositories.set_group_authorized_by_id(session, group_id, True)
+                result = "authorized"
         elif action == "deny":
             group = repositories.set_group_authorized_by_id(session, group_id, False)
             result = "deauthorized"
