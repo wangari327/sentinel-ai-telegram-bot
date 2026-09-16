@@ -174,7 +174,9 @@ STOP_PREFIXES = (
     "pls",
     "plz",
     "hi",
+    "hlo",
     "hello",
+    "hey",
     "can you please",
     "could you please",
     "would you please",
@@ -648,6 +650,12 @@ def _strip_trailing_request_context(value: str) -> str:
     value = re.sub(
         r"\s+\b(?:it'?s|its)\s+(?:absolutely\s+)?(?:the\s+)?"
         r"(?:best|great|good|nice|awesome|amazing|excellent)\b.*$",
+        " ",
+        value,
+        flags=re.IGNORECASE,
+    )
+    value = re.sub(
+        r"\s+\b(?:featuring|starring|with)\b.{0,120}$",
         " ",
         value,
         flags=re.IGNORECASE,

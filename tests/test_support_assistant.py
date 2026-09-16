@@ -122,6 +122,17 @@ def test_polite_add_to_site_request_keeps_title_only() -> None:
     assert intent.title_query == "below deck"
 
 
+def test_misspelled_greeting_add_request_keeps_title_only() -> None:
+    intent = detect_support_intent(
+        "Hlo can you please add private eyes featuring matt shade and Angie",
+        allow_bare_title=True,
+    )
+
+    assert intent is not None
+    assert intent.kind == "request"
+    assert intent.title_query == "private eyes"
+
+
 def test_bare_title_with_media_hint_strips_hint_and_requests() -> None:
     intent = detect_support_intent("ER Series", allow_bare_title=True)
 
