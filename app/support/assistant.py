@@ -175,8 +175,18 @@ STOP_PREFIXES = (
     "plz",
     "hi",
     "hello",
+    "can you please",
+    "could you please",
+    "would you please",
+    "can u please",
+    "could u please",
+    "would u please",
     "can you",
     "could you",
+    "would you",
+    "can u",
+    "could u",
+    "would u",
     "i'd like to request",
     "id like to request",
     "i would like to request",
@@ -621,8 +631,23 @@ def _strip_requested_part_phrases(value: str) -> str:
 
 def _strip_trailing_request_context(value: str) -> str:
     value = re.sub(
+        r"\b(?:to|on|onto|in)\s+(?:the\s+)?"
+        r"(?:site|website|catalog|catalogue|request\s+pile|"
+        r"ibox(?:-?tv)?(?:\.com)?)\b.*$",
+        " ",
+        value,
+        flags=re.IGNORECASE,
+    )
+    value = re.sub(
         r"\b(?:and\s+)?(?:which|that)\s+(?:is|are|was|were|will\s+be\s+)?"
         r"(?:currently\s+)?(?:airing|ongoing|released|out|available)\b.*$",
+        " ",
+        value,
+        flags=re.IGNORECASE,
+    )
+    value = re.sub(
+        r"\s+\b(?:it'?s|its)\s+(?:absolutely\s+)?(?:the\s+)?"
+        r"(?:best|great|good|nice|awesome|amazing|excellent)\b.*$",
         " ",
         value,
         flags=re.IGNORECASE,
@@ -636,9 +661,29 @@ def _strip_trailing_request_context(value: str) -> str:
     return re.sub(r"\s+(?:and|or|which|that)$", "", value, flags=re.IGNORECASE)
 
 
+def _focus_request_clause(value: str) -> str:
+    prepared = re.sub(r"[\r\n]+", ". ", value)
+    segments = [segment.strip(" ,;:-") for segment in re.split(r"[.!?]+", prepared)]
+    triggers = (
+        r"\b(?:can|could|would)\s+(?:you|u)\s+(?:please\s+)?(?:add|upload|post|put)\b",
+        r"\b(?:please\s+)?(?:add|upload|post|put)\b",
+        r"\b(?:i(?:'d| would)?\s+like\s+to\s+request|i\s+want\s+to\s+request)\b",
+        r"\b(?:requesting|request\s+for|request)\b",
+    )
+    for segment in segments:
+        if segment and any(re.search(pattern, segment, flags=re.IGNORECASE) for pattern in triggers):
+            return segment
+    for pattern in triggers:
+        match = re.search(pattern + r".*$", prepared, flags=re.IGNORECASE)
+        if match:
+            return match.group(0)
+    return value
+
+
 def _extract_title_query(text: str) -> str | None:
     value = re.sub(r"https?://\S+", " ", text)
     value = _strip_parenthetical_context(value)
+    value = _focus_request_clause(value)
     value = re.sub(
         r"\b(?:how\s+(?:to|do\s+i)\s+(?:download|play|watch)|tutorial|guide)\b",
         " ",

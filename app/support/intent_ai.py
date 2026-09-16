@@ -11,6 +11,7 @@ from app.config import Settings
 from app.support.assistant import (
     SupportIntent,
     extract_season_episode_ranges,
+    extract_support_title_query,
     support_title_query_is_allowed,
     support_title_query_is_catalog_topic,
 )
@@ -21,6 +22,20 @@ KINDS = {"none", "request", "issue", "howto", "release"}
 CATEGORIES = {"movie", "tv", "anime"}
 ISSUE_TYPES = {"broken_link", "missing_episode", "banned", "playback", "general"}
 LOG_VET_ACTIONS = {"log", "retry_search", "clarify", "skip"}
+OVEREXTRACTED_TITLE_MARKERS = (
+    "thank you",
+    "thanks",
+    "can you",
+    "could you",
+    "would you",
+    "please add",
+    "add ",
+    "upload ",
+    "request ",
+    "to the site",
+    "to ibox",
+    "catalog",
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -312,6 +327,8 @@ def _intent_from_data(data: dict[str, Any], *, settings: Settings) -> SupportInt
 
     title_query = data.get("title_query")
     title = normalize_title_query(str(title_query)) if title_query else None
+    if title and any(marker in title.casefold() for marker in OVEREXTRACTED_TITLE_MARKERS):
+        title = extract_support_title_query(title) or title
     if title and (len(title) < 2 or not support_title_query_is_allowed(title)):
         title = None
     if kind == "request" and title and support_title_query_is_catalog_topic(title):

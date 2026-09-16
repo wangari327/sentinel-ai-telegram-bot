@@ -22,6 +22,29 @@ def test_ai_intent_accepts_fuzzy_title_request() -> None:
     assert intent.category_hint == "movie"
 
 
+def test_ai_intent_cleans_overextracted_polite_request_title() -> None:
+    settings = load_settings({})
+
+    intent = _intent_from_data(
+        {
+            "kind": "request",
+            "confidence": 0.91,
+            "title_query": (
+                "Thank you so much you are absolutely the best. "
+                "Can you please add below deck to the site? Its absolutely the best"
+            ),
+            "category_hint": "tv",
+            "issue_type": None,
+        },
+        settings=settings,
+    )
+
+    assert intent is not None
+    assert intent.kind == "request"
+    assert intent.title_query == "below deck"
+    assert intent.category_hint == "tv"
+
+
 def test_ai_intent_accepts_fuzzy_expired_link_issue() -> None:
     settings = load_settings({})
 

@@ -110,6 +110,18 @@ def test_request_with_multiple_seasons_and_commentary_keeps_title_only() -> None
     assert title_query_with_requested_part(intent) == "Adults Season 1-2"
 
 
+def test_polite_add_to_site_request_keeps_title_only() -> None:
+    intent = detect_support_intent(
+        "Thank you so much you are absolutely the best. "
+        "Can you please add below deck to the site? Its absolutely the best",
+        allow_bare_title=True,
+    )
+
+    assert intent is not None
+    assert intent.kind == "request"
+    assert intent.title_query == "below deck"
+
+
 def test_bare_title_with_media_hint_strips_hint_and_requests() -> None:
     intent = detect_support_intent("ER Series", allow_bare_title=True)
 
