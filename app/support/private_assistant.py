@@ -25,6 +25,7 @@ from app.support.assistant import (
     catalog_requested_season_is_ahead,
     detect_support_intent,
     filter_matches_for_requested_part,
+    support_text_should_be_ignored,
     title_query_with_requested_part,
 )
 from app.support.ibox_search import IboxItem, search_tvweb, search_tvweb_cache
@@ -235,6 +236,12 @@ async def handle_private_user_support(
         await message.answer(
             "Type the question in words and I can help. I am clever, but not "
             "telepathic-through-attachments clever."
+        )
+        return True
+    if support_text_should_be_ignored(normalized.text):
+        await message.answer(
+            private_user_help_text(),
+            disable_web_page_preview=True,
         )
         return True
 

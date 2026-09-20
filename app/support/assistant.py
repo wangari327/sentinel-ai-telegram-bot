@@ -74,6 +74,12 @@ BARE_TITLE_BLOCKLIST = {
     "admin",
     "admins",
     "bro",
+    "can i get it",
+    "can i get that",
+    "can i get this",
+    "can i have it",
+    "can i have that",
+    "can i have this",
     "done",
     "good",
     "great",
@@ -96,6 +102,12 @@ BARE_TITLE_BLOCKLIST = {
     "yes",
 }
 TITLE_QUERY_BLOCKLIST = {
+    "can i get it",
+    "can i get that",
+    "can i get this",
+    "can i have it",
+    "can i have that",
+    "can i have this",
     "help",
     "it",
     "link",
@@ -322,6 +334,8 @@ def detect_support_intent(
     allow_bare_title: bool = False,
     context_title: str | None = None,
 ) -> SupportIntent | None:
+    if support_text_should_be_ignored(text):
+        return None
     lower = text.casefold()
     (
         season_number,
@@ -360,6 +374,31 @@ def detect_support_intent(
             kind="howto",
             title_query=catalog_help_query,
             category_hint=_category_hint(lower) or _catalog_topic_category(catalog_help_query),
+            season_number=season_number,
+            season_end_number=season_end_number,
+            episode_number=episode_number,
+            episode_end_number=episode_end_number,
+        )
+
+    contextual_title = _extract_contextual_pronoun_request_title(
+        text,
+        context_title=context_title,
+    )
+    if contextual_title:
+        return SupportIntent(
+            kind="request",
+            title_query=contextual_title,
+            category_hint=_category_hint(lower),
+            season_number=season_number,
+            season_end_number=season_end_number,
+            episode_number=episode_number,
+            episode_end_number=episode_end_number,
+        )
+    if _looks_like_contextual_pronoun_request(text):
+        return SupportIntent(
+            kind="clarify",
+            title_query="it",
+            category_hint=_category_hint(lower),
             season_number=season_number,
             season_end_number=season_end_number,
             episode_number=episode_number,
@@ -533,6 +572,22 @@ def extract_support_title_query(text: str) -> str | None:
     return _extract_title_query(text)
 
 
+def support_text_should_be_ignored(text: str) -> bool:
+    value = normalize_title_query(text)
+    lower = value.casefold()
+    if not lower:
+        return True
+    instruction_patterns = (
+        r"\bgo\s+to\s+ibox(?:-?tv)?(?:\.com)?\b",
+        r"\bsearch\s+it\s+and\s+download\b",
+        r"\bwrite\s+the\s+name\s+again\b",
+        r"\b(?:the\s+)?bot\s+that\s+has\s+it\s+has\s+been\s+fix(?:ed|t)\b",
+        r"\b(?:the\s+)?bot\s+will\s+search\b",
+        r"\b(?:use|open)\s+ibox(?:-?tv)?(?:\.com)?\s+to\s+search\b",
+    )
+    return any(re.search(pattern, lower, flags=re.IGNORECASE) for pattern in instruction_patterns)
+
+
 def extract_support_context_title(text: str) -> str | None:
     value = re.sub(r"https?://\S+", " ", text)
     value = _strip_parenthetical_context(value)
@@ -572,6 +627,33 @@ def _category_hint(lower: str) -> str | None:
         if any(hint in lower for hint in hints):
             return category
     return None
+
+
+def _extract_contextual_pronoun_request_title(
+    text: str,
+    *,
+    context_title: str | None,
+) -> str | None:
+    if not context_title or not _looks_like_contextual_pronoun_request(text):
+        return None
+    value = normalize_title_query(context_title)
+    if len(value) < 2 or _title_query_is_blocked(value):
+        return None
+    return value
+
+
+def _looks_like_contextual_pronoun_request(text: str) -> bool:
+    value = normalize_title_query(text)
+    return bool(
+        re.fullmatch(
+            r"(?i)(?:"
+            r"(?:can|could|may)\s+i\s+(?:please\s+)?(?:get|have)\s+(?:it|this|that|the\s+link|link)"
+            r"|(?:please\s+)?(?:send|drop|share|give)\s+(?:it|this|that|the\s+link|link)(?:\s+to\s+me)?"
+            r"|(?:need|i\s+need)\s+(?:it|this|that|the\s+link|link)"
+            r")\s*(?:please|pls|plz)?",
+            value,
+        )
+    )
 
 
 def _strip_parenthetical_context(value: str) -> str:
@@ -1392,8 +1474,13 @@ def build_support_reply(
             text=(
                 "<b>Quick check</b>\n"
                 f"<blockquote>{quoted}</blockquote>\n"
-                "Season of what title? Send the show name too, then I can search without "
-                "acting like every Season 1 on earth is invited."
+                + (
+                    "Which movie/show do you mean? Reply to the exact post or send the title "
+                    "name, then I can search without pretending <i>it</i> is a title."
+                    if (intent.title_query or "").casefold() in {"it", "this", "that", "link", "the link"}
+                    else "Season of what title? Send the show name too, then I can search without "
+                    "acting like every Season 1 on earth is invited."
+                )
             ),
             allow_ai_rewrite=False,
             buttons=(SupportButton(text="Tutorial", callback_data="support:tutorial"),),

@@ -18,6 +18,7 @@ from app.support.assistant import (
     detect_support_intent,
     extract_season_episode_numbers,
     filter_matches_for_requested_part,
+    support_text_should_be_ignored,
     title_query_with_requested_part,
 )
 from app.support.ibox_search import IboxItem, item_url, search_tvweb_cache, search_url
@@ -133,6 +134,37 @@ def test_misspelled_greeting_add_request_keeps_title_only() -> None:
     assert intent.title_query == "private eyes"
 
 
+def test_contextual_pronoun_request_uses_replied_title() -> None:
+    intent = detect_support_intent(
+        "Can I get it please",
+        allow_bare_title=True,
+        context_title="The Drop: A Snowfall Saga",
+    )
+
+    assert intent is not None
+    assert intent.kind == "request"
+    assert intent.title_query == "The Drop A Snowfall Saga"
+
+
+def test_contextual_pronoun_request_without_context_clarifies() -> None:
+    intent = detect_support_intent("Can I get it please", allow_bare_title=True)
+
+    assert intent is not None
+    assert intent.kind == "clarify"
+    assert intent.title_query == "it"
+
+
+def test_admin_search_instruction_is_not_logged_as_request() -> None:
+    text = (
+        "The bot that has it has been fixed too. Go to Ibox-tv.com search it and "
+        "download it or write the name again here \"jack Ryan\" and the bot will "
+        "search for you on your behalf"
+    )
+
+    assert support_text_should_be_ignored(text)
+    assert detect_support_intent(text, allow_bare_title=True) is None
+
+
 def test_bare_title_with_media_hint_strips_hint_and_requests() -> None:
     intent = detect_support_intent("ER Series", allow_bare_title=True)
 
@@ -181,6 +213,17 @@ def test_builds_clarification_reply_with_context_button() -> None:
     assert "The Walking Dead" in reply.text
     assert not reply.allow_ai_rewrite
     assert any(button.text == "Search that" for button in reply.buttons)
+
+
+def test_builds_pronoun_clarification_reply() -> None:
+    settings = load_settings({"TVWEB_SITE_BASE_URL": "https://ibox-tv.com"})
+    intent = detect_support_intent("Can I get it please", allow_bare_title=True)
+
+    reply = build_support_reply(intent=intent, matches=[], settings=settings)
+
+    assert reply is not None
+    assert "Which movie/show" in reply.text
+    assert "pretending" in reply.text
 
 
 def test_detects_broken_link_issue() -> None:

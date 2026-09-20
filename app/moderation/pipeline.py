@@ -46,6 +46,7 @@ from app.support.assistant import (
     detect_support_intent,
     extract_support_context_title,
     filter_matches_for_requested_part,
+    support_text_should_be_ignored,
     title_query_with_requested_part,
 )
 from app.support.ibox_search import (
@@ -169,6 +170,8 @@ async def maybe_handle_support_message(
     recent_context_texts: list[str] | None = None,
 ) -> bool:
     if not settings.support_enabled:
+        return False
+    if support_text_should_be_ignored(normalized.text):
         return False
     context_title = _message_reply_context_title(message)
     intent = detect_support_intent(
