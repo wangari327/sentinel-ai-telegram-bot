@@ -12,10 +12,8 @@ from app.support.tmdb import TmdbAvailability
 
 ISSUE_TYPES = {
     "broken_link": (
-        "broken",
         "expired",
         "expire",
-        "fix",
         "not working",
         "dead link",
         "invalid link",
@@ -25,7 +23,7 @@ ISSUE_TYPES = {
     ),
     "missing_episode": ("missing episode", "episode missing", "no episode", "missing ep"),
     "banned": ("banned", "copyright", "removed", "taken down", "takedown"),
-    "playback": ("not playing", "cannot play", "won't play", "sound", "subtitles"),
+    "playback": ("not playing", "cannot play", "won't play", "no sound", "subtitles"),
 }
 ISSUE_LABELS = {
     "broken_link": "link problem",
@@ -419,7 +417,7 @@ def detect_support_intent(
     if _looks_like_missing_episode_issue(lower):
         return SupportIntent(
             kind="issue",
-            title_query=_extract_title_query(text),
+            title_query=_extract_title_query(text) or _clean_context_title(context_title),
             category_hint=_category_hint(lower) or "tv",
             issue_type="missing_episode",
             season_number=season_number,
@@ -428,11 +426,36 @@ def detect_support_intent(
             episode_end_number=episode_end_number,
         )
 
+    fix_issue_title = _extract_fix_issue_title(text, context_title=context_title)
+    if fix_issue_title:
+        return SupportIntent(
+            kind="issue",
+            title_query=fix_issue_title,
+            category_hint=_category_hint(lower),
+            issue_type="broken_link",
+            season_number=season_number,
+            season_end_number=season_end_number,
+            episode_number=episode_number,
+            episode_end_number=episode_end_number,
+        )
+
     for issue_type, phrases in ISSUE_TYPES.items():
         if any(_contains_phrase(lower, phrase) for phrase in phrases):
+            title_query = _extract_title_query(text) or _clean_context_title(context_title)
+            if not title_query and _issue_report_needs_context(lower):
+                return SupportIntent(
+                    kind="clarify",
+                    title_query="it",
+                    category_hint=_category_hint(lower),
+                    context_title=context_title,
+                    season_number=season_number,
+                    season_end_number=season_end_number,
+                    episode_number=episode_number,
+                    episode_end_number=episode_end_number,
+                )
             return SupportIntent(
                 kind="issue",
-                title_query=_extract_title_query(text),
+                title_query=title_query,
                 category_hint=_category_hint(lower),
                 issue_type=issue_type,
                 season_number=season_number,
@@ -620,6 +643,64 @@ def _looks_like_missing_episode_issue(lower_text: str) -> bool:
             lower_text,
         )
     )
+
+
+def _clean_context_title(context_title: str | None) -> str | None:
+    if not context_title:
+        return None
+    value = normalize_title_query(context_title)
+    if len(value) < 2 or _title_query_is_blocked(value):
+        return None
+    return value
+
+
+def _extract_fix_issue_title(text: str, *, context_title: str | None) -> str | None:
+    value = normalize_title_query(text)
+    lower = value.casefold()
+    if not lower:
+        return None
+    if re.fullmatch(r"(?:the\s+)?fix(?:\s+(?:19|20)\d{2})?", lower):
+        return None
+    context = _clean_context_title(context_title)
+    if context and re.fullmatch(r"(?:please\s+|pls\s+|plz\s+)?fix", lower):
+        return context
+    prefix_match = re.match(
+        r"(?i)^(?:hi|hello|hey|please|pls|plz|can\s+you\s+please|can\s+u\s+please)?"
+        r"\s*fix\s+(?P<title>.+)$",
+        value,
+    )
+    if prefix_match:
+        return _extract_title_query(prefix_match.group("title"))
+    suffix_match = re.match(
+        r"(?i)^(?P<title>.+?)\s+(?:please\s+|pls\s+|plz\s+)?fix(?:\s+please|\s+pls|\s+plz)?$",
+        value,
+    )
+    if suffix_match:
+        title = _extract_title_query(suffix_match.group("title"))
+        if title and title.casefold() not in {"the", "a", "an"}:
+            return title
+    return None
+
+
+def _issue_report_needs_context(lower_text: str) -> bool:
+    value = normalize_title_query(lower_text).casefold()
+    value = re.sub(r"^(?:it|this|that|link|the\s+link)\s+(?:is\s+)?", "", value)
+    value = re.sub(r"^is\s+", "", value)
+    return value in {
+        "not working",
+        "expired",
+        "banned",
+        "removed",
+        "taken down",
+        "dead link",
+        "invalid link",
+        "link expired",
+        "not playing",
+        "cannot play",
+        "won't play",
+        "no sound",
+        "broken link",
+    }
 
 
 def _category_hint(lower: str) -> str | None:

@@ -273,6 +273,47 @@ def test_issue_title_strips_season_episode_noise() -> None:
     assert intent.episode_number == 1
 
 
+def test_fix_title_is_not_treated_as_broken_link_issue() -> None:
+    intent = detect_support_intent("The fix 2026", allow_bare_title=True)
+
+    assert intent is not None
+    assert intent.kind == "request"
+    assert intent.title_query == "The fix 2026"
+
+
+def test_titles_containing_broken_or_sound_are_not_issue_words() -> None:
+    broken = detect_support_intent("Broken English", allow_bare_title=True)
+    sound = detect_support_intent("The sound of music", allow_bare_title=True)
+
+    assert broken is not None
+    assert broken.kind == "bare_title"
+    assert broken.title_query == "Broken English"
+    assert sound is not None
+    assert sound.kind == "bare_title"
+    assert sound.title_query == "The sound of music"
+
+
+def test_contextless_issue_report_clarifies_instead_of_logging_mystery_item() -> None:
+    intent = detect_support_intent("Not working", allow_bare_title=True)
+
+    assert intent is not None
+    assert intent.kind == "clarify"
+    assert intent.title_query == "it"
+
+
+def test_contextual_issue_report_uses_replied_title() -> None:
+    intent = detect_support_intent(
+        "Not working",
+        allow_bare_title=True,
+        context_title="Lioness Season 3 Episode 1-4",
+    )
+
+    assert intent is not None
+    assert intent.kind == "issue"
+    assert intent.issue_type == "broken_link"
+    assert intent.title_query == "Lioness Season 3 Episode 1-4"
+
+
 def test_missing_episode_title_query_keeps_title_only() -> None:
     intent = detect_support_intent("Missing episode 8 Silo season 3")
 
