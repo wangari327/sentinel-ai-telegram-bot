@@ -306,6 +306,24 @@ def test_detects_broken_link_issue() -> None:
     assert "Shogun" in (intent.title_query or "")
 
 
+def test_broken_link_phrase_keeps_real_issue_and_clean_title() -> None:
+    intent = detect_support_intent("Sopranos + broken link")
+
+    assert intent is not None
+    assert intent.kind == "issue"
+    assert intent.issue_type == "broken_link"
+    assert intent.title_query == "Sopranos"
+
+
+def test_fix_the_link_phrase_keeps_real_issue_and_clean_title() -> None:
+    intent = detect_support_intent("Jack Ryan pls fix the link its goes to some other channel")
+
+    assert intent is not None
+    assert intent.kind == "issue"
+    assert intent.issue_type == "broken_link"
+    assert intent.title_query == "Jack Ryan"
+
+
 def test_detects_expired_link_issue_from_group_language() -> None:
     intent = detect_support_intent("Hi\nLink lioness is expired\nPlease fix\nThanks")
 

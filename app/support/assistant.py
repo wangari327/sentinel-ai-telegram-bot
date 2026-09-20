@@ -12,6 +12,8 @@ from app.support.tmdb import TmdbAvailability
 
 ISSUE_TYPES = {
     "broken_link": (
+        "broken link",
+        "link broken",
         "expired",
         "expire",
         "not working",
@@ -674,6 +676,13 @@ def _extract_fix_issue_title(text: str, *, context_title: str | None) -> str | N
     )
     if prefix_match:
         return _extract_title_query(prefix_match.group("title"))
+    link_fix_match = re.match(
+        r"(?i)^(?P<title>.+?)\s+(?:please\s+|pls\s+|plz\s+)?fix\s+"
+        r"(?:the\s+)?link\b.*$",
+        value,
+    )
+    if link_fix_match:
+        return _extract_title_query(link_fix_match.group("title"))
     suffix_match = re.match(
         r"(?i)^(?P<title>.+?)\s+(?:please\s+|pls\s+|plz\s+)?fix(?:\s+please|\s+pls|\s+plz)?$",
         value,
@@ -944,7 +953,7 @@ def _extract_title_query(text: str) -> str | None:
     )
     if not protect_title_words:
         value = re.sub(
-            r"\b(?:broken|not\s+working|dead\s+link|invalid\s+link|missing\s+episode|"
+            r"\b(?:broken\s+link|link\s+broken|broken|not\s+working|dead\s+link|invalid\s+link|missing\s+episode|"
             r"episode\s+missing|banned|copyright|removed|taken\s+down|not\s+playing|"
             r"cannot\s+play|won't\s+play|sound|subtitles?|expired|expire|please\s+fix|"
             r"thanks)\b",
