@@ -211,6 +211,8 @@ STOP_PREFIXES = (
     "i'd like",
     "id like",
     "i would like",
+    "i want to download",
+    "i want download",
     "i want",
     "can i get",
     "do you have",
@@ -218,6 +220,8 @@ STOP_PREFIXES = (
     "where can i watch",
     "where is",
     "i need",
+    "i couldn t find",
+    "i couldnt find",
     "need",
     "requesting",
     "request for",
@@ -225,6 +229,7 @@ STOP_PREFIXES = (
     "send",
     "drop",
     "for",
+    "yes",
     "upload",
     "add",
     "search for",
@@ -523,7 +528,9 @@ def extract_season_episode_ranges(
         rf"(?:\s*(?:-|\u2013|to|and|&)\s*(?:season|series)?\s*"
         rf"(?P<season_end>{SEASON_TOKEN_PATTERN}))?\b"
         r"|\bs\s*0*(?P<s_start>\d{1,3})"
-        r"(?:\s*(?:-|\u2013|to|and|&)\s*s?0*(?P<s_end>\d{1,3}))?\b",
+        r"(?:\s*(?:-|\u2013|to|and|&)\s*s?0*(?P<s_end>\d{1,3}))?\b"
+        r"|\bsn\s*0*(?P<sn_start>\d{1,3})"
+        r"(?:\s*(?:-|\u2013|to|and|&)\s*sn?0*(?P<sn_end>\d{1,3}))?\b",
         text,
     )
     ordinal_season_match = re.search(
@@ -535,9 +542,15 @@ def extract_season_episode_ranges(
         episode_number = int(compact_match.group(2))
     if season_number is None and season_match:
         season_number = _number_token_to_int(
-            season_match.group("season_start") or season_match.group("s_start")
+            season_match.group("season_start")
+            or season_match.group("s_start")
+            or season_match.group("sn_start")
         )
-        end_token = season_match.group("season_end") or season_match.group("s_end")
+        end_token = (
+            season_match.group("season_end")
+            or season_match.group("s_end")
+            or season_match.group("sn_end")
+        )
         if end_token:
             season_end_number = _number_token_to_int(end_token)
     if season_number is None and ordinal_season_match:
@@ -611,6 +624,7 @@ def support_text_should_be_ignored(text: str) -> bool:
         r"\bwrite\s+the\s+name\s+again\b",
         r"\b(?:the\s+)?bot\s+that\s+has\s+it\s+has\s+been\s+fix(?:ed|t)\b",
         r"\b(?:the\s+)?bot\s+will\s+search\b",
+        r"\b(?:why'?s\s+)?(?:your\s+)?bot'?s?\s+not\s+working\b",
         r"\b(?:use|open)\s+ibox(?:-?tv)?(?:\.com)?\s+to\s+search\b",
     )
     return any(re.search(pattern, lower, flags=re.IGNORECASE) for pattern in instruction_patterns)
@@ -787,6 +801,12 @@ def _strip_requested_part_phrases(value: str) -> str:
         flags=re.IGNORECASE,
     )
     value = re.sub(
+        r"\bsn\s*\d+(?:\s*(?:-|\u2013|to|and|&)\s*sn?\d+)?\b",
+        " ",
+        value,
+        flags=re.IGNORECASE,
+    )
+    value = re.sub(
         rf"\b(?:episode|ep)\s*{EPISODE_TOKEN_PATTERN}"
         rf"(?:\s*(?:-|\u2013|to|and|&)\s*(?:episode|ep)?\s*{EPISODE_TOKEN_PATTERN})?\b",
         " ",
@@ -926,6 +946,11 @@ def _extract_title_query(text: str) -> str | None:
         value,
     )
     value = re.sub(
+        r"(?i)^\s*i\s+want\s+to\s+download\s+",
+        " ",
+        value,
+    )
+    value = re.sub(
         r"\b(?:how\s+(?:to|do\s+i)\s+(?:download|play|watch)|tutorial|guide)\b",
         " ",
         value,
@@ -933,7 +958,7 @@ def _extract_title_query(text: str) -> str | None:
     )
     value = re.sub(
         r"\b(?:click\s+here|new\s+episode\s+update|new\s+episodes?|updated?|download|"
-        r"open|watch|complete|full\s+episode)\b",
+        r"downloaded|open|watch|complete|full\s+episode)\b",
         " ",
         value,
         flags=re.IGNORECASE,
@@ -981,6 +1006,8 @@ def _extract_title_query(text: str) -> str | None:
         value,
         flags=re.IGNORECASE,
     )
+    value = re.sub(r"\s+\blink$", "", value, flags=re.IGNORECASE)
+    value = re.sub(r"\s+\bbut$", "", value, flags=re.IGNORECASE)
     value = _strip_polite_suffixes(normalize_title_query(value))
     value = re.sub(
         r"\b(?:movie|film|anime|series|season|episode|tv\s+show|show)\b",

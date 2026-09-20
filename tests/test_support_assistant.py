@@ -324,6 +324,39 @@ def test_fix_the_link_phrase_keeps_real_issue_and_clean_title() -> None:
     assert intent.title_query == "Jack Ryan"
 
 
+def test_sn_season_issue_language_keeps_clean_title_and_season() -> None:
+    intent = detect_support_intent("I want to download lioness sn3 but is not working")
+
+    assert intent is not None
+    assert intent.kind == "issue"
+    assert intent.issue_type == "broken_link"
+    assert intent.title_query == "lioness"
+    assert intent.season_number == 3
+
+
+def test_link_expired_title_drops_link_tail() -> None:
+    intent = detect_support_intent("Gilmore girls link expired")
+
+    assert intent is not None
+    assert intent.kind == "issue"
+    assert intent.issue_type == "broken_link"
+    assert intent.title_query == "Gilmore girls"
+
+
+def test_bot_not_working_complaint_is_not_content_issue() -> None:
+    assert support_text_should_be_ignored("Bot's not working.")
+    assert detect_support_intent("Hey why's your bot not working?") is None
+
+
+def test_subtitle_not_found_language_keeps_title_only() -> None:
+    intent = detect_support_intent("I couldn’t find subtitles for incendies")
+
+    assert intent is not None
+    assert intent.kind == "issue"
+    assert intent.issue_type == "playback"
+    assert intent.title_query == "incendies"
+
+
 def test_detects_expired_link_issue_from_group_language() -> None:
     intent = detect_support_intent("Hi\nLink lioness is expired\nPlease fix\nThanks")
 
