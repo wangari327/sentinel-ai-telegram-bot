@@ -154,6 +154,25 @@ def test_contextual_pronoun_request_without_context_clarifies() -> None:
     assert intent.title_query == "it"
 
 
+def test_where_can_i_get_it_without_context_clarifies() -> None:
+    intent = detect_support_intent("Where can I get it?", allow_bare_title=True)
+
+    assert intent is not None
+    assert intent.kind == "clarify"
+    assert intent.title_query == "it"
+
+
+def test_title_before_where_can_i_get_it_keeps_title_only() -> None:
+    intent = detect_support_intent(
+        "Everybody hate Christ where can I get it",
+        allow_bare_title=True,
+    )
+
+    assert intent is not None
+    assert intent.kind == "request"
+    assert intent.title_query == "Everybody hate Christ"
+
+
 def test_admin_search_instruction_is_not_logged_as_request() -> None:
     text = (
         "The bot that has it has been fixed too. Go to Ibox-tv.com search it and "

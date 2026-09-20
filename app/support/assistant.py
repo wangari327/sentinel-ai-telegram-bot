@@ -648,6 +648,7 @@ def _looks_like_contextual_pronoun_request(text: str) -> bool:
         re.fullmatch(
             r"(?i)(?:"
             r"(?:can|could|may)\s+i\s+(?:please\s+)?(?:get|have)\s+(?:it|this|that|the\s+link|link)"
+            r"|(?:where\s+(?:can|do)\s+i|how\s+can\s+i)\s+(?:get|find|watch|download|access)\s+(?:it|this|that|the\s+link|link)"
             r"|(?:please\s+)?(?:send|drop|share|give)\s+(?:it|this|that|the\s+link|link)(?:\s+to\s+me)?"
             r"|(?:need|i\s+need)\s+(?:it|this|that|the\s+link|link)"
             r")\s*(?:please|pls|plz)?",
@@ -744,6 +745,15 @@ def _strip_trailing_request_context(value: str) -> str:
     )
     value = re.sub(
         r"\b(?:and\s+)?(?:currently\s+)?(?:airing|ongoing)\b.*$",
+        " ",
+        value,
+        flags=re.IGNORECASE,
+    )
+    value = re.sub(
+        r"\s+\b(?:where\s+(?:can|do)\s+i|how\s+can\s+i|"
+        r"(?:can|could|may)\s+i)\s+"
+        r"(?:get|find|watch|download|access|have)\s+"
+        r"(?:it|this|that|the\s+link|link)\b.*$",
         " ",
         value,
         flags=re.IGNORECASE,
