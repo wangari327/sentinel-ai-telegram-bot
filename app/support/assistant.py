@@ -107,6 +107,7 @@ TITLE_QUERY_BLOCKLIST = {
     "can i have that",
     "can i have this",
     "help",
+    "i mean",
     "it",
     "link",
     "links",
@@ -120,6 +121,8 @@ TITLE_QUERY_BLOCKLIST = {
     "subtitles",
     "that",
     "this",
+    "oh i mean",
+    "ow i mean",
 }
 HOWTO_WORDS = (
     "how to download",
@@ -797,6 +800,19 @@ def _strip_requested_part_phrases(value: str) -> str:
 
 def _strip_trailing_request_context(value: str) -> str:
     value = re.sub(
+        r"\s+\b(?:please\s+)?(?:can|could|would)\s+(?:it|this|that)\s+be\s+"
+        r"(?:uploaded|added|posted|sent|shared)\b.*$",
+        " ",
+        value,
+        flags=re.IGNORECASE,
+    )
+    value = re.sub(
+        r"\s+\b(?:do|can|could)\s+we\s+have\b.*$",
+        " ",
+        value,
+        flags=re.IGNORECASE,
+    )
+    value = re.sub(
         r"\b(?:to|on|onto|in)\s+(?:the\s+)?"
         r"(?:site|website|catalog|catalogue|request\s+pile|"
         r"ibox(?:-?tv)?(?:\.com)?)\b.*$",
@@ -842,6 +858,31 @@ def _strip_trailing_request_context(value: str) -> str:
     return re.sub(r"\s+(?:and|or|which|that)$", "", value, flags=re.IGNORECASE)
 
 
+def _strip_media_file_noise(value: str) -> str:
+    return re.sub(
+        r"\b(?:x264|x265|h264|h265|hevc|aac|mp4|mkv|avi|web-?dl|webrip|"
+        r"bluray|brrip|hdrip|dvdrip|10bit|8bit|480p|720p|1080p|2160p|4k)\b",
+        " ",
+        value,
+        flags=re.IGNORECASE,
+    )
+
+
+def _extract_labeled_title(value: str) -> str | None:
+    match = re.search(
+        r"(?i)\b(?:movie|show|series|title)?\s*name\s*(?:[:=-]\s*)?"
+        r"(?P<title>.+?)(?:\s+year\s*(?:[:=-]\s*)?(?P<year>(?:19|20)\d{2}))?\s*$",
+        value,
+    )
+    if not match:
+        return None
+    title = normalize_title_query(match.group("title"))
+    year = match.group("year")
+    if year and year not in title:
+        title = f"{title} {year}"
+    return title
+
+
 def _focus_request_clause(value: str) -> str:
     prepared = re.sub(r"[\r\n]+", ". ", value)
     segments = [segment.strip(" ,;:-") for segment in re.split(r"[.!?]+", prepared)]
@@ -863,8 +904,18 @@ def _focus_request_clause(value: str) -> str:
 
 def _extract_title_query(text: str) -> str | None:
     value = re.sub(r"https?://\S+", " ", text)
+    labeled_title = _extract_labeled_title(value)
+    protect_title_words = labeled_title is not None
+    if labeled_title:
+        value = labeled_title
     value = _strip_parenthetical_context(value)
     value = _focus_request_clause(value)
+    value = re.sub(
+        r"(?i)^\s*i\s+(?:am|was|'m|m)\s+looking\s+for\s+(?:that\s+)?"
+        r"(?:(?:series|movie|show|film)\s+)?(?:called|named)?\s+",
+        " ",
+        value,
+    )
     value = re.sub(
         r"\b(?:how\s+(?:to|do\s+i)\s+(?:download|play|watch)|tutorial|guide)\b",
         " ",
@@ -891,16 +942,18 @@ def _extract_title_query(text: str) -> str | None:
         value,
         flags=re.IGNORECASE,
     )
-    value = re.sub(
-        r"\b(?:broken|not\s+working|dead\s+link|invalid\s+link|missing\s+episode|"
-        r"episode\s+missing|banned|copyright|removed|taken\s+down|not\s+playing|"
-        r"cannot\s+play|won't\s+play|sound|subtitles?|expired|expire|please\s+fix|"
-        r"fix|thanks)\b",
-        " ",
-        value,
-        flags=re.IGNORECASE,
-    )
+    if not protect_title_words:
+        value = re.sub(
+            r"\b(?:broken|not\s+working|dead\s+link|invalid\s+link|missing\s+episode|"
+            r"episode\s+missing|banned|copyright|removed|taken\s+down|not\s+playing|"
+            r"cannot\s+play|won't\s+play|sound|subtitles?|expired|expire|please\s+fix|"
+            r"thanks)\b",
+            " ",
+            value,
+            flags=re.IGNORECASE,
+        )
     value = _strip_requested_part_phrases(value)
+    value = _strip_media_file_noise(value)
     value = _strip_trailing_request_context(value)
     value = _strip_polite_suffixes(normalize_title_query(value))
     lower = value.casefold()
@@ -929,7 +982,8 @@ def _extract_title_query(text: str) -> str | None:
     value = re.sub(r"^(?:of|for)\s+", "", value, flags=re.IGNORECASE)
     value = _strip_trailing_request_context(value)
     value = _strip_polite_suffixes(normalize_title_query(value))
-    value = re.sub(r"^(?:the|a|an)\s+", "", value, flags=re.IGNORECASE)
+    if not protect_title_words:
+        value = re.sub(r"^(?:the|a|an)\s+", "", value, flags=re.IGNORECASE)
     value = normalize_title_query(value)
     if len(value) < 2:
         return None
@@ -944,10 +998,21 @@ def _extract_bare_title_query(text: str) -> str | None:
     value = _strip_parenthetical_context(text.strip(" ?!.,:;\"'[]{}"))
     value = _strip_polite_suffixes(normalize_title_query(value))
     lower = value.casefold()
+    if re.search(r"\b(?:oh|ow)\s+i\s+mean\b|\bi\s+mean\b", lower):
+        return None
     if lower in BARE_TITLE_BLOCKLIST or _title_query_is_blocked(value):
         return None
     if extract_incomplete_episode_reference(value):
         return None
+    if re.search(
+        r"\b(?:can|could|would)\s+(?:it|this|that)\s+be\s+"
+        r"(?:uploaded|added|posted|sent|shared)\b"
+        r"|\b(?:do|can|could)\s+we\s+have\b",
+        lower,
+    ):
+        stripped = _extract_title_query(value)
+        if stripped and _valid_bare_title_candidate(stripped, allow_short=True):
+            return stripped
     category_hint = _category_hint(lower)
     if category_hint:
         stripped = _extract_title_query(value)

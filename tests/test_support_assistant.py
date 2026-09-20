@@ -134,6 +134,58 @@ def test_misspelled_greeting_add_request_keeps_title_only() -> None:
     assert intent.title_query == "private eyes"
 
 
+def test_trailing_upload_chatter_is_not_part_of_title() -> None:
+    intent = detect_support_intent("Roswell please can it be uploaded", allow_bare_title=True)
+
+    assert intent is not None
+    assert intent.kind == "request"
+    assert intent.title_query == "Roswell"
+
+
+def test_looking_for_called_phrase_keeps_called_title_only() -> None:
+    intent = detect_support_intent(
+        "I was looking for that series called Paris has fallen",
+        allow_bare_title=True,
+    )
+
+    assert intent is not None
+    assert intent.kind == "request"
+    assert intent.title_query == "Paris has fallen"
+
+
+def test_do_we_have_phrase_keeps_title_and_requested_season() -> None:
+    intent = detect_support_intent("Please silo do we have season 4", allow_bare_title=True)
+
+    assert intent is not None
+    assert intent.kind == "request"
+    assert intent.title_query == "silo"
+    assert intent.season_number == 4
+    assert title_query_with_requested_part(intent) == "silo Season 4"
+
+
+def test_file_quality_tags_are_not_part_of_title() -> None:
+    intent = detect_support_intent("Reacher S04 x264 1080p MP4 AAC", allow_bare_title=True)
+
+    assert intent is not None
+    assert intent.kind == "request"
+    assert intent.title_query == "Reacher"
+    assert intent.season_number == 4
+
+
+def test_labeled_movie_name_extracts_title_and_year() -> None:
+    intent = detect_support_intent("movie name: the fix year:2026", allow_bare_title=True)
+
+    assert intent is not None
+    assert intent.kind == "request"
+    assert intent.title_query == "the fix 2026"
+
+
+def test_i_mean_episode_without_title_does_not_log_request() -> None:
+    intent = detect_support_intent("Ow I mean S01E03", allow_bare_title=True)
+
+    assert intent is None
+
+
 def test_contextual_pronoun_request_uses_replied_title() -> None:
     intent = detect_support_intent(
         "Can I get it please",
@@ -279,6 +331,14 @@ def test_fix_title_is_not_treated_as_broken_link_issue() -> None:
     assert intent is not None
     assert intent.kind == "request"
     assert intent.title_query == "The fix 2026"
+
+
+def test_requested_fix_title_keeps_fix_word() -> None:
+    intent = detect_support_intent("Please upload the movie The Fix 2026")
+
+    assert intent is not None
+    assert intent.kind == "request"
+    assert intent.title_query == "The Fix 2026"
 
 
 def test_titles_containing_broken_or_sound_are_not_issue_words() -> None:
