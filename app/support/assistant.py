@@ -1104,6 +1104,15 @@ def support_title_query_is_allowed(value: str | None) -> bool:
     return not _title_query_is_blocked(value)
 
 
+def unmatched_bare_title_should_be_vetted_as_request(value: str | None) -> bool:
+    if not value:
+        return False
+    title = normalize_title_query(value)
+    if not _valid_bare_title_candidate(title):
+        return False
+    return len(title.split()) >= 2
+
+
 def support_title_query_is_catalog_topic(value: str | None) -> bool:
     if not value:
         return False

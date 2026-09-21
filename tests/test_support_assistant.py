@@ -20,6 +20,7 @@ from app.support.assistant import (
     filter_matches_for_requested_part,
     support_text_should_be_ignored,
     title_query_with_requested_part,
+    unmatched_bare_title_should_be_vetted_as_request,
 )
 from app.support.ibox_search import IboxItem, item_url, search_tvweb_cache, search_url
 from app.support.responder import render_support_reply, select_support_chat_config
@@ -489,6 +490,15 @@ def test_support_parser_rejects_generic_help_as_content_request() -> None:
     assert detect_support_intent("search engines") is None
 
 
+def test_unmatched_multi_word_bare_title_can_be_vetted_as_request() -> None:
+    intent = detect_support_intent("Dark side of the ring", allow_bare_title=True)
+
+    assert intent is not None
+    assert intent.kind == "bare_title"
+    assert unmatched_bare_title_should_be_vetted_as_request(intent.title_query)
+    assert not unmatched_bare_title_should_be_vetted_as_request("Wire")
+
+
 def test_playback_issue_extracts_title_after_subtitle_words() -> None:
     intent = detect_support_intent("Need subtitles for Silo")
 
@@ -871,6 +881,88 @@ def test_cached_tvweb_lookup_matches_short_acronym_punctuation() -> None:
 
     assert matches
     assert matches[0].title == "E.R."
+
+
+def test_cached_tvweb_lookup_prioritizes_article_stripped_exact_title() -> None:
+    engine = create_engine("sqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+    settings = load_settings({})
+    with Session(engine) as session:
+        session.add_all(
+            [
+                TvwebCatalogItem(
+                    tvweb_id=1,
+                    title="Zip Wire",
+                    title_key="zip wire",
+                    episode_title=None,
+                    category="movie",
+                    slug="zip-wire",
+                    year=2026,
+                    rating=5.0,
+                    download_link=None,
+                ),
+                TvwebCatalogItem(
+                    tvweb_id=2,
+                    title="The Wire",
+                    title_key="the wire",
+                    episode_title="Season 1-5 Complete",
+                    category="tv",
+                    slug="the-wire-season-1-5-complete",
+                    year=2002,
+                    rating=9.3,
+                    download_link=None,
+                ),
+            ]
+        )
+        session.commit()
+
+        matches = search_tvweb_cache(session=session, settings=settings, query="Wire")
+
+    assert matches
+    assert matches[0].title == "The Wire"
+
+
+def test_cached_tvweb_lookup_handles_natural_missing_words_variant() -> None:
+    engine = create_engine("sqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+    settings = load_settings({})
+    with Session(engine) as session:
+        session.add_all(
+            [
+                TvwebCatalogItem(
+                    tvweb_id=1,
+                    title="The Lord of the Rings: The Return of the King",
+                    title_key="the lord of the rings the return of the king",
+                    episode_title=None,
+                    category="movie",
+                    slug="the-lord-of-the-rings-the-return-of-the-king",
+                    year=2003,
+                    rating=9.0,
+                    download_link=None,
+                ),
+                TvwebCatalogItem(
+                    tvweb_id=2,
+                    title="The Lord of the Rings: The Rings of Power",
+                    title_key="the lord of the rings the rings of power",
+                    episode_title="Season 1-2 Complete",
+                    category="tv",
+                    slug="the-lord-of-the-rings-the-rings-of-power-season-1-2",
+                    year=2022,
+                    rating=7.0,
+                    download_link=None,
+                ),
+            ]
+        )
+        session.commit()
+
+        matches = search_tvweb_cache(
+            session=session,
+            settings=settings,
+            query="Lord of the rings of power",
+        )
+
+    assert matches
+    assert matches[0].title == "The Lord of the Rings: The Rings of Power"
 
 
 def test_cached_tvweb_lookup_fuzzes_common_title_typo_after_polite_suffix_strip() -> None:

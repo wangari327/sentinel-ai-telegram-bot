@@ -183,6 +183,7 @@ def search_tvweb_cache(
             TvwebCatalogItem.category == ("movie" if category == "movies" else category)
         )
     rows = [row for row in session.scalars(stmt).all() if _catalog_text_matches(query_key, row)]
+    rows.sort(key=lambda row: _catalog_rank_score(query_key, row), reverse=True)
     if not rows:
         rows = _fuzzy_tvweb_cache_rows(
             session=session,
@@ -241,6 +242,30 @@ def _catalog_text_matches(query_key: str, row: TvwebCatalogItem) -> bool:
     return any(pattern.search(value) for value in values)
 
 
+def _catalog_rank_score(query_key: str, row: TvwebCatalogItem) -> tuple[float, float, float]:
+    title_key = normalize_title_query(row.title_key or row.title).casefold()
+    title_without_article = _strip_leading_article(title_key)
+    query_without_article = _strip_leading_article(query_key)
+    compact_query = _compact_title_key(query_without_article)
+    compact_title = _compact_title_key(title_without_article)
+    exact_score = 0.0
+    if title_key == query_key:
+        exact_score = 6.0
+    elif title_without_article == query_without_article:
+        exact_score = 5.5
+    elif compact_title == compact_query:
+        exact_score = 5.0
+    elif title_key.startswith(query_key) or title_without_article.startswith(query_without_article):
+        exact_score = 4.0
+    elif _contains_title_words_in_order(query_without_article, title_without_article):
+        exact_score = 3.5
+    elif _catalog_text_matches(query_key, row):
+        exact_score = 2.0
+    shorter_title_bonus = 1 / max(len(title_without_article.split()), 1)
+    freshness = row.source_updated_at.timestamp() if row.source_updated_at else 0.0
+    return exact_score, shorter_title_bonus, freshness
+
+
 def _compact_exact_rows(
     *,
     session: Session,
@@ -266,14 +291,65 @@ def _compact_title_key(value: str) -> str:
 def _catalog_similarity(query_key: str, title_key: str | None) -> float:
     if not query_key or not title_key:
         return 0.0
-    if query_key[0] != title_key[0]:
+    stripped_query = _strip_leading_article(query_key)
+    stripped_title = _strip_leading_article(title_key)
+    if not stripped_query or not stripped_title:
         return 0.0
-    query_words = query_key.split()
-    title_words = title_key.split()
-    if len(query_words) == 1 and len(title_words) == 1 and abs(len(query_key) - len(title_key)) > 2:
+    if stripped_query[0] != stripped_title[0]:
         return 0.0
-    return SequenceMatcher(None, query_key, title_key).ratio()
+    query_words = stripped_query.split()
+    title_words = stripped_title.split()
+    if (
+        len(query_words) == 1
+        and len(title_words) == 1
+        and abs(len(stripped_query) - len(stripped_title)) > 2
+    ):
+        return 0.0
+    token_score = _ordered_token_score(stripped_query, stripped_title)
+    sequence_score = SequenceMatcher(None, stripped_query, stripped_title).ratio()
+    return max(token_score, sequence_score)
 
 
 def _fuzzy_threshold(query_key: str) -> float:
     return 0.82 if len(query_key.split()) == 1 else 0.78
+
+
+def _strip_leading_article(value: str) -> str:
+    return re.sub(r"^(?:the|a|an)\s+", "", normalize_title_query(value).casefold()).strip()
+
+
+def _significant_tokens(value: str) -> list[str]:
+    return [
+        token
+        for token in re.findall(r"[a-z0-9']+", normalize_title_query(value).casefold())
+        if token not in {"the", "a", "an", "of", "and", "or", "to"}
+    ]
+
+
+def _ordered_token_score(query_key: str, title_key: str) -> float:
+    query_tokens = _significant_tokens(query_key)
+    title_tokens = _significant_tokens(title_key)
+    if not query_tokens or not title_tokens:
+        return 0.0
+    if not set(query_tokens).issubset(set(title_tokens)):
+        return 0.0
+    if not _tokens_appear_in_order(query_tokens, title_tokens):
+        return 0.0
+    compact_penalty = min(max(len(title_tokens) - len(query_tokens), 0) * 0.025, 0.14)
+    return 0.94 - compact_penalty
+
+
+def _contains_title_words_in_order(query_key: str, title_key: str) -> bool:
+    query_tokens = _significant_tokens(query_key)
+    title_tokens = _significant_tokens(title_key)
+    return bool(query_tokens and _tokens_appear_in_order(query_tokens, title_tokens))
+
+
+def _tokens_appear_in_order(query_tokens: list[str], title_tokens: list[str]) -> bool:
+    cursor = 0
+    for token in title_tokens:
+        if token == query_tokens[cursor]:
+            cursor += 1
+            if cursor == len(query_tokens):
+                return True
+    return False

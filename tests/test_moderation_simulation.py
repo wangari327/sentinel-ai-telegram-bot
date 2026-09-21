@@ -1274,6 +1274,100 @@ async def test_pipeline_ignores_generic_search_engine_phrase() -> None:
     assert bot.sent == []
 
 
+async def test_pipeline_skips_support_for_group_admin_replies() -> None:
+    settings = load_settings(
+        {
+            "AUTHORIZED_CHAT_IDS": "-1001",
+            "DEFAULT_GROUP_MODE": "normal",
+            "AI_PROVIDER": "rules_only",
+            "AI_FALLBACK_PROVIDER": "rules_only",
+            "SUPPORT_ENABLED": "true",
+            "SUPPORT_AI_INTENT_ENABLED": "false",
+            "SUPPORT_AI_REPLIES": "false",
+            "SUPPORT_REPLY_CLEANUP_SECONDS": "0",
+            "TVWEB_DATABASE_URL": "postgresql://readonly:pass@example.com:5432/ibox",
+        }
+    )
+    bot = FakeBot()
+    message = FakeMessage(
+        text="What exactly do you mean by not working. Bot not responding? Can't join force sub? Or what exactly"
+    )
+
+    with _session() as session:
+        group = repositories.get_or_create_group(
+            session,
+            telegram_chat_id=-1001,
+            title="Series 2022 Requests",
+            chat_type="supergroup",
+            settings=settings,
+        )
+        group.setup_completed = True
+
+        result = await process_group_message(
+            message=message,
+            bot=bot,
+            session=session,
+            settings=settings,
+            permissions=FakePermissions(),
+            sender_is_admin=True,
+        )
+        issue = session.scalar(select(SupportIssue))
+
+    assert not result.support_replied
+    assert issue is None
+    assert bot.sent == []
+
+
+async def test_pipeline_vets_unmatched_multi_word_bare_title_as_request(monkeypatch) -> None:
+    settings = load_settings(
+        {
+            "AUTHORIZED_CHAT_IDS": "-1001",
+            "DEFAULT_GROUP_MODE": "normal",
+            "AI_PROVIDER": "rules_only",
+            "AI_FALLBACK_PROVIDER": "rules_only",
+            "SUPPORT_ENABLED": "true",
+            "SUPPORT_AI_INTENT_ENABLED": "true",
+            "SUPPORT_AI_REPLIES": "false",
+            "SUPPORT_REPLY_CLEANUP_SECONDS": "0",
+            "TVWEB_DATABASE_URL": "postgresql://readonly:pass@example.com:5432/ibox",
+        }
+    )
+    bot = FakeBot()
+    message = FakeMessage(text="Dark side of the ring")
+
+    async def fake_vet_support_log_with_ai(**kwargs) -> SupportLogVet:
+        return SupportLogVet(action="log", confidence=0.9)
+
+    monkeypatch.setattr(pipeline, "vet_support_log_with_ai", fake_vet_support_log_with_ai)
+    monkeypatch.setattr(pipeline, "search_tvweb", lambda **kwargs: [])
+
+    with _session() as session:
+        group = repositories.get_or_create_group(
+            session,
+            telegram_chat_id=-1001,
+            title="Series 2022 Requests",
+            chat_type="supergroup",
+            settings=settings,
+        )
+        group.setup_completed = True
+
+        result = await process_group_message(
+            message=message,
+            bot=bot,
+            session=session,
+            settings=settings,
+            permissions=FakePermissions(),
+            sender_is_admin=False,
+        )
+        request = session.scalar(select(SupportRequest))
+
+    assert result.support_replied
+    assert request is not None
+    assert request.title_query == "Dark side of the ring"
+    assert bot.sent
+    assert "request" in str(bot.sent[0]["text"]).casefold()
+
+
 async def test_pipeline_guides_catalog_topic_question_without_logging_request() -> None:
     settings = load_settings(
         {

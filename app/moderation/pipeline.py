@@ -48,6 +48,7 @@ from app.support.assistant import (
     filter_matches_for_requested_part,
     support_text_should_be_ignored,
     title_query_with_requested_part,
+    unmatched_bare_title_should_be_vetted_as_request,
 )
 from app.support.ibox_search import (
     IboxItem,
@@ -167,9 +168,12 @@ async def maybe_handle_support_message(
     group: Group,
     normalized: NormalizedMessage,
     sender_user_id: int | None,
+    sender_is_admin: bool = False,
     recent_context_texts: list[str] | None = None,
 ) -> bool:
     if not settings.support_enabled:
+        return False
+    if sender_is_admin:
         return False
     if support_text_should_be_ignored(normalized.text):
         return False
@@ -246,6 +250,12 @@ async def maybe_handle_support_message(
             intent=intent,
             recent_context_texts=recent_context_texts or [],
         )
+    if (
+        not matches
+        and intent.kind == "bare_title"
+        and unmatched_bare_title_should_be_vetted_as_request(intent.title_query)
+    ):
+        intent = replace(intent, kind="request")
 
     catalog_matches_without_part: list[IboxItem] = []
     if (
@@ -1122,6 +1132,7 @@ async def process_group_message(
             group=group,
             normalized=normalized,
             sender_user_id=sender_user_id,
+            sender_is_admin=sender.is_admin,
             recent_context_texts=recent_context_texts,
         )
         if support_replied:
@@ -1281,6 +1292,7 @@ async def process_group_message(
             group=group,
             normalized=normalized,
             sender_user_id=sender_user_id,
+            sender_is_admin=sender.is_admin,
             recent_context_texts=recent_context_texts,
         )
 
