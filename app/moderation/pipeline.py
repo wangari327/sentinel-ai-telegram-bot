@@ -138,6 +138,8 @@ def should_call_ai(*, features: object, group_settings: object) -> bool:
             "contains_private_solicitation",
             "contains_crypto_scam",
             "contains_fake_reward",
+            "contains_money_promo",
+            "contains_contact_handle_lure",
             "contains_telegram_login_phishing_language",
         )
     )
@@ -992,6 +994,8 @@ def _support_allowed_after_moderation(
         "contains_private_solicitation",
         "contains_crypto_scam",
         "contains_fake_reward",
+        "contains_money_promo",
+        "contains_contact_handle_lure",
         "contains_telegram_login_phishing_language",
         "high_risk_link",
         "domain_blocked",
@@ -1146,10 +1150,16 @@ async def process_group_message(
         return PipelineResult(status="skipped")
 
     domain_statuses = repositories.get_domain_statuses(session, group.id, normalized.domains)
+    recent_same_text_count = repositories.count_recent_moderation_events_by_hash(
+        session,
+        group_id=group.id,
+        text_hash=normalized.text_hash,
+    )
     features = extract_features(
         normalized,
         sender=sender,
         domain_statuses=domain_statuses,
+        repeated_message=recent_same_text_count > 0,
     )
     rule_score = compute_rule_score(features)
     spam_examples, good_examples, spam_similarity, not_spam_similarity = retrieve_examples(
@@ -1174,7 +1184,10 @@ async def process_group_message(
             "mode": group_settings.mode,
             "setup_completed": group.setup_completed,
         },
-        recent_user_behavior={"previous_violation_score": previous_violation_score},
+        recent_user_behavior={
+            "previous_violation_score": previous_violation_score,
+            "recent_same_text_count": recent_same_text_count,
+        },
         relevant_spam_examples=[example.raw_excerpt for example in spam_examples[:4]],
         relevant_not_spam_examples=[example.raw_excerpt for example in good_examples[:4]],
     )

@@ -38,6 +38,33 @@ def test_current_forwarded_story_caption_campaign_is_high_risk() -> None:
     assert features.high_risk_link
 
 
+def test_obfuscated_adult_share_google_bait_is_high_risk() -> None:
+    normalized = normalize_message_parts(
+        text=(
+            "Petite TikTоk baddie got exposed n*des going around, "
+            "still up s3x tаpe https://share.google/gbkJnmGCIpgTM1o9p"
+        )
+    )
+    features = extract_features(normalized)
+
+    assert features.contains_porn_bait
+    assert features.contains_suspicious_adult_story_lure
+    assert features.high_risk_link
+
+
+def test_money_contact_promo_is_high_risk() -> None:
+    normalized = normalize_message_parts(
+        text=(
+            "2026年度最靠谱线上项目 一个抖音号都能做 一对一包教会 "
+            "一单一结 日收益 3000+ 发财咨询： @iuyl986 发财咨询： @iuyl986"
+        )
+    )
+    features = extract_features(normalized)
+
+    assert features.contains_money_promo
+    assert features.contains_contact_handle_lure
+
+
 def test_video_call_nudes_solicitation_is_high_risk_without_link() -> None:
     normalized = normalize_message_parts(
         text="Smash hk 100\nVideo call\nNudes, any one online"

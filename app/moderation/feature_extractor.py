@@ -47,6 +47,19 @@ def _deobfuscate(text: str) -> str:
             "$": "s",
             "!": "i",
             "|": "i",
+            "а": "a",
+            "е": "e",
+            "о": "o",
+            "р": "p",
+            "с": "c",
+            "х": "x",
+            "у": "y",
+            "і": "i",
+            "ј": "j",
+            "ѕ": "s",
+            "ԁ": "d",
+            "ɑ": "a",
+            "ο": "o",
         }
     )
     text = ZERO_WIDTH_MARKERS.sub("", text.casefold()).translate(table)
@@ -86,6 +99,8 @@ class MessageFeatures:
     contains_private_solicitation: bool
     contains_crypto_scam: bool
     contains_fake_reward: bool
+    contains_money_promo: bool
+    contains_contact_handle_lure: bool
     contains_telegram_login_phishing_language: bool
     contains_many_emojis: bool
     contains_obfuscated_text: bool
@@ -179,6 +194,9 @@ def extract_features(
         r"(?:hidden\s+cam|private\s+tape|full\s+tape|view\s+full\s+scene|watch\s+uncut)",
         r"(?:hot\s+)?instagram\s+girl.{0,60}(?:exposed|naked|riding|cock)",
         r"(?:got\s+exposed|exposed).{0,60}(?:riding|cock|naked|p\s*ssy|pussy|dick)",
+        r"(?:got\s+exposed|exposed).{0,80}(?:n\s*des?|nudes?|sex\s+tape|s\s*x\s*tape|leaked?)",
+        r"(?:tiktok|twitch|icloud|snapchat|onlyfans|fansly|baddie).{0,90}(?:n\s*des?|nudes?|sex|tape|exposed|leaked?)",
+        r"(?:sex|s\s*x)\s+tape",
         r"\b(?:video\s+call|vc)\b.{0,70}\b(?:nudes?|sex|xxx|adult|horny|online)\b",
         r"\b(?:nudes?|sex|xxx|adult|horny)\b.{0,70}\b(?:video\s+call|vc|online|dm|pm)\b",
         r"\b(?:any\s*one|anyone)\s+online\b.{0,70}\b(?:nudes?|video\s+call|vc|sex)\b",
@@ -199,7 +217,15 @@ def extract_features(
             "watchuncut",
             "instagramgirlgotexposed",
             "hotinstagramgirl",
+            "baddiegotexposed",
+            "gotexposednudes",
+            "leakednudes",
+            "icloudbaddie",
+            "tiktokbaddie",
+            "twitchbaddie",
             "ridingcock",
+            "sextape",
+            "ndes",
             "sexvideo",
             "explicitvideo",
             "videocallnudes",
@@ -235,6 +261,8 @@ def extract_features(
             r"\b(?:naked|p\s*ssy|pussy|dick|cock|f\s*cked|fucked|sex)\b.{0,60}"
             r"\b(?:video|tape|cam|full|watch|unlock|scene)\b"
         ),
+        r"\b(?:sex|s\s*x)\s+tape\b",
+        r"\b(?:baddie|tiktok|twitch|icloud|snapchat|fansly)\b.{0,90}\b(?:n\s*des?|nudes?|sex|tape|exposed|leaked?)\b",
         r"\b(?:hot\s+)?instagram\s+girl\b.{0,80}\b(?:got\s+)?exposed\b",
         r"\briding\s+cock\b",
     ]
@@ -257,10 +285,18 @@ def extract_features(
             "gotexposed",
             "instagramgirl",
             "hotinstagramgirl",
+            "baddiegotexposed",
+            "gotexposednudes",
+            "leakednudes",
+            "icloudbaddie",
+            "tiktokbaddie",
+            "twitchbaddie",
             "stepmom",
             "stepsis",
             "gymgirl",
             "nudes",
+            "ndes",
+            "sextape",
             "sexvideo",
             "explicitvideo",
             "videocallnudes",
@@ -358,6 +394,40 @@ def extract_features(
             "nitro giveaway",
         )
     )
+    ascii_handle_count = len(re.findall(r"@[A-Za-z0-9_]{3,}", text))
+    contains_money_promo = any(
+        phrase in lower
+        for phrase in (
+            "日收益",
+            "收益",
+            "发财",
+            "赚钱",
+            "线上项目",
+            "项目",
+            "包教会",
+            "一单一结",
+            "咨询",
+        )
+    ) or bool(
+        re.search(
+            r"\b(?:daily\s+income|earn(?:ing)?s?|profit|income|make\s+money|work\s+from\s+home)\b"
+            r".{0,60}\b(?:\d{3,}|\$|usd|ksh|kes|naira|ghs)\b",
+            deobfuscated,
+        )
+    )
+    contains_contact_handle_lure = bool(
+        ascii_handle_count >= 2
+        or (
+            ascii_handle_count >= 1
+            and (
+                contains_money_promo
+                or re.search(
+                    r"\b(?:contact|consult|dm|pm|inbox|message|whatsapp|telegram)\b.{0,40}@[a-z0-9_]{3,}",
+                    deobfuscated,
+                )
+            )
+        )
+    )
     contains_login_phishing = any(
         phrase in deobfuscated
         for phrase in (
@@ -378,6 +448,7 @@ def extract_features(
     excessive_mentions = len(re.findall(r"@[A-Za-z0-9_]{3,}", text)) >= 5
     channel_promo_pattern = bool(
         re.search(r"\b(join|subscribe|follow)\b.{0,40}\b(channel|group|private)\b", deobfuscated)
+        or ("加入" in lower and ("群" in lower or "公群" in lower))
     )
 
     domain_blocked = any(status == "blocked" for status in domain_statuses.values())
@@ -401,6 +472,8 @@ def extract_features(
                 or contains_suspicious_adult_story_lure
                 or contains_crypto_scam
                 or contains_fake_reward
+                or contains_money_promo
+                or contains_contact_handle_lure
                 or contains_login_phishing
                 or contains_shortener
             )
@@ -423,6 +496,8 @@ def extract_features(
         contains_private_solicitation,
         contains_crypto_scam,
         contains_fake_reward,
+        contains_money_promo,
+        contains_contact_handle_lure,
         contains_login_phishing,
         contains_many_emojis,
         contains_obfuscated_text,
@@ -452,6 +527,8 @@ def extract_features(
         contains_private_solicitation=contains_private_solicitation,
         contains_crypto_scam=contains_crypto_scam,
         contains_fake_reward=contains_fake_reward,
+        contains_money_promo=contains_money_promo,
+        contains_contact_handle_lure=contains_contact_handle_lure,
         contains_telegram_login_phishing_language=contains_login_phishing,
         contains_many_emojis=contains_many_emojis,
         contains_obfuscated_text=contains_obfuscated_text,

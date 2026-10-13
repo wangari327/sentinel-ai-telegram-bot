@@ -12,6 +12,7 @@ from app.db import repositories
 from app.db.models import Base, ModerationEvent, SupportIssue, SupportRequest, TvwebCatalogItem
 from app.moderation import pipeline
 from app.moderation.ai_classifier import ClassificationResult
+from app.moderation.normalizer import normalize_message_parts
 from app.moderation.pipeline import process_group_message
 from app.support.ibox_search import IboxItem
 from app.support.intent_ai import SupportLogVet
@@ -383,6 +384,64 @@ async def test_pipeline_deletes_private_content_solicitation_without_request_log
     assert result.decision.action == "delete"
     assert not result.support_replied
     assert request is None
+    assert bot.deleted == [(-1001, 101)]
+
+
+async def test_pipeline_deletes_repeated_contact_promo_before_more_accounts_pile_on() -> None:
+    settings = load_settings(
+        {
+            "AUTHORIZED_CHAT_IDS": "-1001",
+            "DEFAULT_GROUP_MODE": "normal",
+            "AI_PROVIDER": "rules_only",
+            "AI_FALLBACK_PROVIDER": "rules_only",
+            "SUPPORT_ENABLED": "false",
+        }
+    )
+    bot = FakeBot()
+    message = FakeMessage(text="Contact @iuyl986 Contact @iuyl986")
+
+    with _session() as session:
+        group = repositories.get_or_create_group(
+            session,
+            telegram_chat_id=-1001,
+            title="Series 2022 Requests",
+            chat_type="supergroup",
+            settings=settings,
+        )
+        group.setup_completed = True
+        normalized = normalize_message_parts(text=message.text)
+        repositories.save_moderation_event(
+            session,
+            group_id=group.id,
+            telegram_chat_id=-1001,
+            telegram_message_id=77,
+            sender_user_id=12345,
+            normalized_text=normalized.text,
+            text_hash=normalized.text_hash,
+            domains=[],
+            ai_label="not_spam",
+            ai_confidence=0.3,
+            rule_score=0.2,
+            final_score=0.3,
+            action_taken="allow",
+            action_status="ok",
+            reasons=[],
+            provider_name="test",
+            model_name="test",
+            prompt_version="test",
+        )
+
+        result = await process_group_message(
+            message=message,
+            bot=bot,
+            session=session,
+            settings=settings,
+            permissions=FakePermissions(),
+            sender_is_admin=False,
+        )
+
+    assert result.decision is not None
+    assert result.decision.action == "delete"
     assert bot.deleted == [(-1001, 101)]
 
 

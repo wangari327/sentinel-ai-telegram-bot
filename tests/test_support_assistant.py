@@ -44,6 +44,15 @@ def test_detects_requesting_prefix_cleanly() -> None:
     assert intent.title_query == "AVatar"
 
 
+def test_share_request_keeps_real_title_only() -> None:
+    intent = detect_support_intent("Please share Friends series", allow_bare_title=True)
+
+    assert intent is not None
+    assert intent.kind == "request"
+    assert intent.title_query == "Friends"
+    assert intent.category_hint == "tv"
+
+
 def test_bare_title_detection_is_opt_in() -> None:
     assert detect_support_intent("Avatar") is None
     assert detect_support_intent("Www", allow_bare_title=True) is None

@@ -12,6 +12,23 @@ def _session() -> Session:
     return Session(engine)
 
 
+def test_new_group_settings_follow_auto_delete_default_mode() -> None:
+    settings = load_settings({"DEFAULT_GROUP_MODE": "auto_delete"})
+    with _session() as session:
+        group = repositories.get_or_create_group(
+            session,
+            telegram_chat_id=-1001,
+            title="Group",
+            chat_type="supergroup",
+            settings=settings,
+        )
+        group_settings = repositories.get_or_create_group_settings(session, group, settings)
+
+    assert group_settings.mode == "auto_delete"
+    assert group_settings.auto_delete_enabled is True
+    assert group_settings.silent_enabled is False
+
+
 def test_support_issue_merges_same_matched_show_and_keeps_first_reporter() -> None:
     settings = load_settings({})
     with _session() as session:

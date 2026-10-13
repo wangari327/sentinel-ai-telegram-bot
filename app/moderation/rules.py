@@ -36,6 +36,8 @@ def compute_rule_score(features: MessageFeatures) -> RuleScore:
         "contains_private_solicitation": (0.62, "private message content solicitation"),
         "contains_crypto_scam": (0.40, "crypto scam wording"),
         "contains_fake_reward": (0.34, "fake reward wording"),
+        "contains_money_promo": (0.42, "money-making promotion"),
+        "contains_contact_handle_lure": (0.38, "repeated contact-handle lure"),
         "contains_telegram_login_phishing_language": (0.46, "login phishing wording"),
         "contains_zero_width_chars": (0.18, "zero-width characters"),
         "contains_obfuscated_text": (0.14, "obfuscated text"),
@@ -88,6 +90,21 @@ def compute_rule_score(features: MessageFeatures) -> RuleScore:
     if features.contains_private_solicitation:
         score = max(score, 0.96)
         reasons.append("private off-platform content solicitation")
+
+    if features.contains_money_promo and features.contains_contact_handle_lure:
+        score = max(score, 0.96)
+        reasons.append("money-making promotion with contact handle")
+
+    if features.repeated_message and (
+        features.contains_contact_handle_lure
+        or features.contains_money_promo
+        or features.contains_porn_bait
+        or features.contains_private_solicitation
+        or features.high_risk_link
+        or features.contains_url
+    ):
+        score = max(score, 0.96)
+        reasons.append("repeated promotional or risky message")
 
     if features.high_risk_link and score < 0.72:
         score = max(score, 0.72)

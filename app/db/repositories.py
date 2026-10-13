@@ -95,6 +95,8 @@ def get_or_create_group_settings(
     group_settings = GroupSettings(
         group_id=group.id,
         mode=settings.default_group_mode,
+        auto_delete_enabled=settings.default_group_mode in {"auto_delete", "silent", "aggressive"},
+        silent_enabled=settings.default_group_mode == "silent",
         spam_delete_threshold=settings.spam_delete_threshold,
         spam_ban_threshold=settings.spam_ban_threshold,
         suspicious_low_threshold=settings.suspicious_low_threshold,
@@ -362,6 +364,26 @@ def save_moderation_event(
     session.add(event)
     session.flush()
     return event
+
+
+def count_recent_moderation_events_by_hash(
+    session: Session,
+    *,
+    group_id: int,
+    text_hash: str,
+    window_hours: int = 48,
+) -> int:
+    since = datetime.now(tz=UTC) - timedelta(hours=window_hours)
+    return int(
+        session.scalar(
+            select(func.count(ModerationEvent.id)).where(
+                ModerationEvent.group_id == group_id,
+                ModerationEvent.text_hash == text_hash,
+                ModerationEvent.created_at >= since,
+            )
+        )
+        or 0
+    )
 
 
 def create_pending_review(

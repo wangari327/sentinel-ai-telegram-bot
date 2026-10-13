@@ -187,6 +187,40 @@ async def test_rules_only_deletes_private_file_solicitation_without_url() -> Non
     assert decision.action == "delete"
 
 
+async def test_rules_only_deletes_money_contact_promo_without_url() -> None:
+    from app.moderation.ai_classifier import ClassificationRequest, RulesOnlyProvider
+
+    normalized = normalize_message_parts(
+        text=(
+            "2026年度最靠谱线上项目 一个抖音号都能做 一对一包教会 "
+            "一单一结 日收益 3000+ 发财咨询： @iuyl986 发财咨询： @iuyl986"
+        )
+    )
+    features = extract_features(normalized)
+    rule_score = compute_rule_score(features)
+    ai_result = await RulesOnlyProvider().classify(
+        ClassificationRequest(
+            normalized_text=normalized.text,
+            raw_excerpt=normalized.raw_excerpt,
+            rule_features=features.to_dict(),
+            rule_score=rule_score.score,
+        )
+    )
+    score = combine_scores(rule_score=rule_score, ai_result=ai_result, features=features)
+
+    decision = decide_action(
+        score=score,
+        ai_result=ai_result,
+        features=features,
+        settings={"mode": "normal", "ban_enabled": True},
+        setup_completed=True,
+    )
+
+    assert ai_result.label == "spam"
+    assert score.final_score >= 0.88
+    assert decision.action == "delete"
+
+
 def test_explicit_adult_story_rule_overrides_uncertain_safe_ai() -> None:
     normalized = normalize_message_parts(
         text="Hot Instagram girl got exposed 🔥 riding cock like crazy"

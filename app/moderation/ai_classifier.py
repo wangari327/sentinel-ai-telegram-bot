@@ -172,6 +172,12 @@ class RulesOnlyProvider(AIProvider):
         if features.get("contains_fake_reward"):
             reasons.append("fake reward phrase")
             lure_type = "fake_giveaway"
+        if features.get("contains_money_promo"):
+            reasons.append("money-making promotion")
+            lure_type = "fake_giveaway"
+        if features.get("contains_contact_handle_lure"):
+            reasons.append("repeated contact-handle lure")
+            lure_type = "spam_channel_promo"
         if features.get("contains_telegram_login_phishing_language"):
             reasons.append("login phishing language")
             lure_type = "phishing"
@@ -185,6 +191,19 @@ class RulesOnlyProvider(AIProvider):
             or features.get("contains_private_solicitation")
             or features.get("contains_crypto_scam")
             or features.get("contains_fake_reward")
+            or (
+                features.get("contains_money_promo")
+                and features.get("contains_contact_handle_lure")
+            )
+            or (
+                features.get("repeated_message")
+                and (
+                    features.get("contains_contact_handle_lure")
+                    or features.get("contains_money_promo")
+                    or features.get("contains_porn_bait")
+                    or features.get("high_risk_link")
+                )
+            )
             or features.get("contains_telegram_login_phishing_language")
         )
 

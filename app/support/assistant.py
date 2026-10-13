@@ -61,6 +61,7 @@ REQUEST_WORDS = (
     "i need",
     "can i get",
     "send",
+    "share",
     "looking for",
     "find",
     "where can i",
@@ -917,7 +918,7 @@ def _focus_request_clause(value: str) -> str:
     segments = [segment.strip(" ,;:-") for segment in re.split(r"[.!?]+", prepared)]
     triggers = (
         r"\b(?:can|could|would)\s+(?:you|u)\s+(?:please\s+)?(?:add|upload|post|put)\b",
-        r"\b(?:please\s+)?(?:add|upload|post|put)\b",
+        r"\b(?:please\s+)?(?:add|upload|post|put|share)\b",
         r"\b(?:i(?:'d| would)?\s+like\s+to\s+request|i\s+want\s+to\s+request)\b",
         r"\b(?:requesting|request\s+for|request)\b",
     )
@@ -939,6 +940,16 @@ def _extract_title_query(text: str) -> str | None:
         value = labeled_title
     value = _strip_parenthetical_context(value)
     value = _focus_request_clause(value)
+    value = re.sub(
+        r"(?i)^\s*(?:please|pls|plz|kindly)\s+share\s+",
+        " ",
+        value,
+    )
+    value = re.sub(
+        r"(?i)^\s*share\s+(?=.+\b(?:movie|film|anime|series|season|episode|tv\s+show|show)\b)",
+        " ",
+        value,
+    )
     value = re.sub(
         r"(?i)^\s*i\s+(?:am|was|'m|m)\s+looking\s+for\s+(?:that\s+)?"
         r"(?:(?:series|movie|show|film)\s+)?(?:called|named)?\s+",
