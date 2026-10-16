@@ -56,13 +56,21 @@ def test_money_contact_promo_is_high_risk() -> None:
     normalized = normalize_message_parts(
         text=(
             "2026年度最靠谱线上项目 一个抖音号都能做 一对一包教会 "
-            "一单一结 日收益 3000+ 发财咨询： @iuyl986 发财咨询： @iuyl986"
+            "一单一结 日收益 3000+ 发财咨询：@iuyl986 发财咨询：@iuyl986"
         )
     )
     features = extract_features(normalized)
 
     assert features.contains_money_promo
     assert features.contains_contact_handle_lure
+
+
+def test_chinese_join_group_promotion_is_detected() -> None:
+    normalized = normalize_message_parts(text="加入下方官方群，发财咨询：@iuyl986")
+    features = extract_features(normalized)
+
+    assert features.channel_promo_pattern
+    assert features.contains_money_promo
 
 
 def test_video_call_nudes_solicitation_is_high_risk_without_link() -> None:

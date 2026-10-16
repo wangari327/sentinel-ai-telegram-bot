@@ -395,18 +395,23 @@ def extract_features(
         )
     )
     ascii_handle_count = len(re.findall(r"@[A-Za-z0-9_]{3,}", text))
+    # Use specific phrases rather than generic Chinese words such as "project" or
+    # "consultation", which can occur in ordinary conversation. These phrases are
+    # common in income-scheme campaigns and are usually paired with handles.
     contains_money_promo = any(
         phrase in lower
         for phrase in (
             "日收益",
-            "收益",
-            "发财",
-            "赚钱",
-            "线上项目",
-            "项目",
-            "包教会",
+            "每日收益",
+            "日入",
+            "日赚",
             "一单一结",
-            "咨询",
+            "一对一包教会",
+            "线上项目",
+            "发财咨询",
+            "赚钱咨询",
+            "兼职咨询",
+            "项目咨询",
         )
     ) or bool(
         re.search(
@@ -448,7 +453,7 @@ def extract_features(
     excessive_mentions = len(re.findall(r"@[A-Za-z0-9_]{3,}", text)) >= 5
     channel_promo_pattern = bool(
         re.search(r"\b(join|subscribe|follow)\b.{0,40}\b(channel|group|private)\b", deobfuscated)
-        or ("加入" in lower and ("群" in lower or "公群" in lower))
+        or ("加入" in lower and ("群" in lower or "公众号" in lower))
     )
 
     domain_blocked = any(status == "blocked" for status in domain_statuses.values())

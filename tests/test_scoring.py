@@ -193,7 +193,7 @@ async def test_rules_only_deletes_money_contact_promo_without_url() -> None:
     normalized = normalize_message_parts(
         text=(
             "2026年度最靠谱线上项目 一个抖音号都能做 一对一包教会 "
-            "一单一结 日收益 3000+ 发财咨询： @iuyl986 发财咨询： @iuyl986"
+            "一单一结 日收益 3000+ 发财咨询：@iuyl986 发财咨询：@iuyl986"
         )
     )
     features = extract_features(normalized)
