@@ -19,11 +19,15 @@ async def on_group_message(message: Message) -> None:
     if not message.bot:
         return
     permissions = await get_bot_permissions(message.bot, message.chat.id)
-    sender_is_admin = await user_is_chat_admin(
-        message.bot,
-        message.chat.id,
-        message.from_user.id if message.from_user else None,
-    )
+    sender_user_id = message.from_user.id if message.from_user else None
+    # The owner allowlist is authoritative even if Telegram's member lookup is delayed.
+    sender_is_admin = settings.user_is_owner_admin(sender_user_id)
+    if not sender_is_admin:
+        sender_is_admin = await user_is_chat_admin(
+            message.bot,
+            message.chat.id,
+            sender_user_id,
+        )
     with session_scope() as session:
         result = await process_group_message(
             message=message,

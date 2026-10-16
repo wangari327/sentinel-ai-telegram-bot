@@ -161,6 +161,20 @@ def is_linked_channel_announcement(message: object) -> bool:
     )
 
 
+def is_anonymous_group_admin_message(message: object) -> bool:
+    """Return true for messages posted through Telegram's anonymous admin identity."""
+    if getattr(message, "from_user", None) is not None:
+        return False
+    chat = getattr(message, "chat", None)
+    sender_chat = getattr(message, "sender_chat", None)
+    if chat is None or sender_chat is None:
+        return False
+    return (
+        getattr(sender_chat, "id", None) == getattr(chat, "id", None)
+        and getattr(sender_chat, "type", None) in {"group", "supergroup"}
+    )
+
+
 async def maybe_handle_support_message(
     *,
     message: object,
@@ -1126,11 +1140,13 @@ async def process_group_message(
 
     user = getattr(message, "from_user", None)
     sender_user_id = getattr(user, "id", None)
+    if is_linked_channel_announcement(message):
+        return PipelineResult(status="skipped_linked_channel_announcement")
+    if is_anonymous_group_admin_message(message):
+        return PipelineResult(status="skipped_anonymous_admin")
     normalized = normalize_telegram_message(message)
     recent_context_texts = _recent_group_context_texts(chat_id, normalized.text)
     _remember_group_context_text(chat_id, normalized.text)
-    if is_linked_channel_announcement(message):
-        return PipelineResult(status="skipped_linked_channel_announcement")
 
     is_trusted = repositories.is_trusted_user(session, group.id, sender_user_id)
     previous_violation_count = repositories.get_violation_count(session, group.id, sender_user_id)

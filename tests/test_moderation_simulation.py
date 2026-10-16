@@ -39,7 +39,7 @@ class FakeMessage:
     text: str
     message_id: int = 101
     chat: FakeChat = field(default_factory=FakeChat)
-    from_user: FakeUser = field(default_factory=FakeUser)
+    from_user: FakeUser | None = field(default_factory=FakeUser)
     sender_chat: object | None = None
     is_automatic_forward: bool = False
     caption: str | None = None
@@ -1386,6 +1386,55 @@ async def test_pipeline_skips_support_for_group_admin_replies() -> None:
         issue = session.scalar(select(SupportIssue))
 
     assert not result.support_replied
+    assert issue is None
+    assert bot.sent == []
+
+
+async def test_pipeline_skips_anonymous_group_admin_replies() -> None:
+    settings = load_settings(
+        {
+            "AUTHORIZED_CHAT_IDS": "-1001",
+            "DEFAULT_GROUP_MODE": "normal",
+            "AI_PROVIDER": "rules_only",
+            "AI_FALLBACK_PROVIDER": "rules_only",
+            "SUPPORT_ENABLED": "true",
+            "SUPPORT_AI_INTENT_ENABLED": "false",
+            "SUPPORT_AI_REPLIES": "false",
+            "TVWEB_DATABASE_URL": "postgresql://readonly:pass@example.com:5432/ibox",
+        }
+    )
+    bot = FakeBot()
+    message = FakeMessage(
+        text="Jack Ryan is available again. Search ibox-tv.com and download it there.",
+        from_user=None,
+        sender_chat=SimpleNamespace(id=-1001, type="supergroup"),
+    )
+
+    with _session() as session:
+        group = repositories.get_or_create_group(
+            session,
+            telegram_chat_id=-1001,
+            title="Series 2022 Requests",
+            chat_type="supergroup",
+            settings=settings,
+        )
+        group.setup_completed = True
+
+        result = await process_group_message(
+            message=message,
+            bot=bot,
+            session=session,
+            settings=settings,
+            permissions=FakePermissions(),
+            sender_is_admin=False,
+        )
+
+        request = session.scalar(select(SupportRequest))
+        issue = session.scalar(select(SupportIssue))
+
+    assert result.status == "skipped_anonymous_admin"
+    assert not result.support_replied
+    assert request is None
     assert issue is None
     assert bot.sent == []
 
