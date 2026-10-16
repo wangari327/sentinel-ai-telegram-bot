@@ -967,6 +967,7 @@ def _maybe_escalate_repeat_violation(
     return replace(
         decision,
         action="delete_and_ban",
+        mute=False,
         ban=True,
         pending_review=False,
         reason=f"repeat spam violation threshold reached ({threshold})",
@@ -1009,15 +1010,27 @@ def _moderation_delete_notice_text(
     violation_count: int,
     repeat_ban_after: int,
     banned: bool,
+    muted: bool,
     ban_failed: bool,
+    mute_failed: bool,
 ) -> str:
     subject = _sender_public_label(sender)
     if banned:
         status = f"{subject} was banned after <b>{violation_count}</b> spam strikes."
+    elif muted:
+        status = (
+            f"{subject} was muted after repeated risky spam. "
+            f"Strike count: <b>{violation_count}</b>."
+        )
     elif ban_failed:
         status = (
             f"{subject} hit the repeat-spam threshold, but I could not ban them yet. "
             "Check my ban/restrict permission."
+        )
+    elif mute_failed:
+        status = (
+            f"{subject} looked like repeat spam, but I could not mute them yet. "
+            "Check my restrict permission."
         )
     elif repeat_ban_after > 0:
         remaining = max(0, repeat_ban_after - violation_count)
@@ -1067,7 +1080,9 @@ async def _send_moderation_delete_notice(
         violation_count=violation_count,
         repeat_ban_after=_repeat_ban_threshold(settings),
         banned=action_result.ban_status == "ok",
+        muted=action_result.mute_status == "ok",
         ban_failed=action_result.ban_status in {"failed", "missing_permission"},
+        mute_failed=action_result.mute_status in {"failed", "missing_permission"},
     )
     await send_ephemeral_message(
         bot=bot,
@@ -1248,10 +1263,11 @@ async def process_group_message(
         decision=decision,
         can_delete=bool(getattr(permissions, "can_delete_messages", False)),
         can_ban=bool(getattr(permissions, "can_restrict_members", False)),
+        mute_seconds=settings.spam_repeat_mute_seconds,
     )
     event.action_status = action_result.error or "ok"
     violation_count = previous_violation_count
-    if (decision.delete or decision.ban) and sender_user_id is not None:
+    if (decision.delete or decision.mute or decision.ban) and sender_user_id is not None:
         violation = repositories.record_violation(
             session,
             group_id=group.id,

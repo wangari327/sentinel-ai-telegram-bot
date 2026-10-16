@@ -107,6 +107,7 @@ class Settings:
     spam_delete_threshold: float
     spam_ban_threshold: float
     spam_repeat_ban_after: int
+    spam_repeat_mute_seconds: int
     moderation_delete_notice_enabled: bool
     moderation_notice_cleanup_seconds: int
     suspicious_low_threshold: float
@@ -249,6 +250,7 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         spam_delete_threshold=_float(source.get("SPAM_DELETE_THRESHOLD"), 0.88),
         spam_ban_threshold=_float(source.get("SPAM_BAN_THRESHOLD"), 0.96),
         spam_repeat_ban_after=_int(source.get("SPAM_REPEAT_BAN_AFTER"), 2),
+        spam_repeat_mute_seconds=_int(source.get("SPAM_REPEAT_MUTE_SECONDS"), 86400),
         moderation_delete_notice_enabled=_bool(
             source.get("MODERATION_DELETE_NOTICE_ENABLED"), True
         ),

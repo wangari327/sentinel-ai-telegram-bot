@@ -94,6 +94,7 @@ PRIVATE_SUPPORT_ENABLED=true
 PRIVATE_ABUSE_SILENCE_AFTER=3
 SUPPORT_REPLY_CLEANUP_SECONDS=86400
 SPAM_REPEAT_BAN_AFTER=2
+SPAM_REPEAT_MUTE_SECONDS=86400
 MODERATION_DELETE_NOTICE_ENABLED=true
 MODERATION_NOTICE_CLEANUP_SECONDS=86400
 TVWEB_CACHE_ENABLED=true
@@ -123,7 +124,7 @@ With `SUPPORT_AI_INTENT_ENABLED=true`, Sentinel lets the configured AI provider 
 
 With `AI_SCAN_LINKS_ONLY=true`, normal low-risk chatter stays cheap, but severe no-link risk text such as adult clickbait lures, crypto scams, fake rewards, and login phishing language can still be escalated and deleted. The setting is no longer a free pass for text-only spam.
 
-With `MODERATION_DELETE_NOTICE_ENABLED=true`, Sentinel posts a short group notice after it successfully deletes spam. `SPAM_REPEAT_BAN_AFTER=2` escalates the same user's second confirmed spam deletion in the same group into a ban attempt, as long as the bot has ban/restrict permission. `MODERATION_NOTICE_CLEANUP_SECONDS=86400` removes those notices after one day; use `0` if you want them to stay. Silent mode suppresses delete notices.
+With `MODERATION_DELETE_NOTICE_ENABLED=true`, Sentinel posts a short group notice after it successfully deletes spam. `SPAM_REPEAT_MUTE_SECONDS=86400` mutes repeated risky promo senders for one day, including repeated lures coming from different accounts. `SPAM_REPEAT_BAN_AFTER=2` escalates the same user's second confirmed spam deletion in the same group into a ban attempt, as long as the bot has ban/restrict permission. `MODERATION_NOTICE_CLEANUP_SECONDS=86400` removes those notices after one day; use `0` if you want them to stay. Silent mode suppresses delete notices.
 
 With `PRIVATE_SUPPORT_ENABLED=true`, normal users can DM the bot for iBOX help and use Start-button shortcuts. Private spam, abusive messages, explicit bait, malicious code snippets, and unsupported media-only uploads are logged as private moderation events; after `PRIVATE_ABUSE_SILENCE_AFTER` strikes, Sentinel stops replying to that private user.
 

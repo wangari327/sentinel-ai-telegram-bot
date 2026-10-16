@@ -59,6 +59,7 @@ class FakePermissions:
 class FakeBot:
     def __init__(self) -> None:
         self.deleted: list[tuple[int, int]] = []
+        self.muted: list[tuple[int, int, object, object]] = []
         self.banned: list[tuple[int, int]] = []
         self.sent: list[dict[str, object]] = []
 
@@ -67,6 +68,15 @@ class FakeBot:
 
     async def ban_chat_member(self, chat_id: int, user_id: int) -> None:
         self.banned.append((chat_id, user_id))
+
+    async def restrict_chat_member(
+        self,
+        chat_id: int,
+        user_id: int,
+        permissions: object,
+        until_date: object,
+    ) -> None:
+        self.muted.append((chat_id, user_id, permissions, until_date))
 
     async def send_message(self, **kwargs: object) -> FakeMessage:
         self.sent.append(kwargs)
@@ -409,6 +419,7 @@ async def test_pipeline_deletes_repeated_contact_promo_before_more_accounts_pile
             settings=settings,
         )
         group.setup_completed = True
+        group.settings.ban_enabled = True
         normalized = normalize_message_parts(text=message.text)
         repositories.save_moderation_event(
             session,
@@ -436,13 +447,15 @@ async def test_pipeline_deletes_repeated_contact_promo_before_more_accounts_pile
             bot=bot,
             session=session,
             settings=settings,
-            permissions=FakePermissions(),
+            permissions=FakePermissions(can_restrict_members=True),
             sender_is_admin=False,
         )
 
     assert result.decision is not None
-    assert result.decision.action == "delete"
+    assert result.decision.action == "delete_and_mute"
     assert bot.deleted == [(-1001, 101)]
+    assert [(chat_id, user_id) for chat_id, user_id, _, _ in bot.muted] == [(-1001, 9001)]
+    assert bot.banned == []
 
 
 async def test_pipeline_bans_repeat_spammer_after_delete_threshold() -> None:

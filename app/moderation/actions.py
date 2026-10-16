@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 
 from aiogram.exceptions import TelegramAPIError
+from aiogram.types import ChatPermissions
 
 from app.moderation.scoring import Decision
 
@@ -11,6 +13,7 @@ from app.moderation.scoring import Decision
 class ActionResult:
     action: str
     delete_status: str = "not_attempted"
+    mute_status: str = "not_attempted"
     ban_status: str = "not_attempted"
     error: str | None = None
 
@@ -24,8 +27,10 @@ async def execute_telegram_decision(
     decision: Decision,
     can_delete: bool,
     can_ban: bool,
+    mute_seconds: int = 86400,
 ) -> ActionResult:
     delete_status = "not_attempted"
+    mute_status = "not_attempted"
     ban_status = "not_attempted"
     errors: list[str] = []
 
@@ -40,6 +45,26 @@ async def execute_telegram_decision(
             except TelegramAPIError as exc:
                 delete_status = "failed"
                 errors.append(f"delete failed: {exc}")
+
+    if decision.mute:
+        if not sender_user_id:
+            mute_status = "missing_sender"
+            errors.append("cannot mute without sender user id")
+        elif not can_ban:
+            mute_status = "missing_permission"
+            errors.append("missing restrict permission")
+        else:
+            try:
+                await bot.restrict_chat_member(
+                    chat_id=chat_id,
+                    user_id=sender_user_id,
+                    permissions=ChatPermissions(can_send_messages=False),
+                    until_date=datetime.now(tz=UTC) + timedelta(seconds=max(60, mute_seconds)),
+                )
+                mute_status = "ok"
+            except TelegramAPIError as exc:
+                mute_status = "failed"
+                errors.append(f"mute failed: {exc}")
 
     if decision.ban:
         if not sender_user_id:
@@ -59,6 +84,7 @@ async def execute_telegram_decision(
     return ActionResult(
         action=decision.action,
         delete_status=delete_status,
+        mute_status=mute_status,
         ban_status=ban_status,
         error="; ".join(errors) if errors else None,
     )

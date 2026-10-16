@@ -27,6 +27,7 @@ def test_new_group_settings_follow_auto_delete_default_mode() -> None:
     assert group_settings.mode == "auto_delete"
     assert group_settings.auto_delete_enabled is True
     assert group_settings.silent_enabled is False
+    assert group_settings.ban_enabled is True
 
 
 def test_support_issue_merges_same_matched_show_and_keeps_first_reporter() -> None:

@@ -97,6 +97,7 @@ def get_or_create_group_settings(
         mode=settings.default_group_mode,
         auto_delete_enabled=settings.default_group_mode in {"auto_delete", "silent", "aggressive"},
         silent_enabled=settings.default_group_mode == "silent",
+        ban_enabled=settings.default_group_mode in {"auto_delete", "aggressive"},
         spam_delete_threshold=settings.spam_delete_threshold,
         spam_ban_threshold=settings.spam_ban_threshold,
         suspicious_low_threshold=settings.suspicious_low_threshold,

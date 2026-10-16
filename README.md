@@ -94,7 +94,7 @@ Private owner controls:
 
 Immediate high-risk bans are controlled separately from mode. Use `/ban_on` only after the bot has ban/restrict permission and you are comfortable with one-message ban decisions. Use `/ban_off` to keep immediate high-risk detections at delete-only.
 
-When Sentinel successfully deletes spam, it can post a short group notice saying the message was neutralized and warning that repeat spam leads to a ban. `SPAM_REPEAT_BAN_AFTER=2` means the second confirmed spam deletion from the same user in the same group escalates to a ban when the bot has ban/restrict permission. Set `SPAM_REPEAT_BAN_AFTER=0` to disable repeat-strike bans. `MODERATION_DELETE_NOTICE_ENABLED=true` controls the notice, and `MODERATION_NOTICE_CLEANUP_SECONDS=86400` makes Sentinel clean up that notice after one day. Silent mode suppresses these notices.
+When Sentinel successfully deletes spam, it can post a short group notice saying the message was neutralized. Repeated risky promo text from the same or different accounts is deleted and muted for `SPAM_REPEAT_MUTE_SECONDS=86400` when the bot has restrict permission. `SPAM_REPEAT_BAN_AFTER=2` means the same user's second confirmed spam deletion in the same group escalates to a ban. Set `SPAM_REPEAT_BAN_AFTER=0` to disable repeat-strike bans. `MODERATION_DELETE_NOTICE_ENABLED=true` controls the notice, and `MODERATION_NOTICE_CLEANUP_SECONDS=86400` makes Sentinel clean up that notice after one day. Silent mode suppresses these notices.
 
 Admin notifications are private DM review messages with action buttons. The admin user must start the bot in private chat first, otherwise Telegram may block the DM.
 
@@ -417,6 +417,7 @@ SUPPORT_AI_INTENT_MAX_TEXT_CHARS=700
 PRIVATE_SUPPORT_ENABLED=true
 PRIVATE_ABUSE_SILENCE_AFTER=3
 SPAM_REPEAT_BAN_AFTER=2
+SPAM_REPEAT_MUTE_SECONDS=86400
 MODERATION_DELETE_NOTICE_ENABLED=true
 MODERATION_NOTICE_CLEANUP_SECONDS=86400
 TVWEB_CACHE_ENABLED=true
@@ -436,7 +437,7 @@ The default Docker Postgres volume survives container rebuilds and repo updates.
 
 `TELEGRAM_DROP_PENDING_UPDATES_ON_STARTUP=true` is intentional for this moderation bot. If the VPS is down for a while, Telegram may queue hundreds of old group messages. Dropping pending updates on restart prevents Sentinel from replaying stale chat history, spamming users, and burning AI quota. `TELEGRAM_WEBHOOK_MAX_CONNECTIONS=10` also keeps Telegram from flooding the app immediately after downtime.
 
-`SPAM_REPEAT_BAN_AFTER=2` makes the first confirmed deletion a visible warning and the second confirmed spam deletion a ban attempt. `MODERATION_DELETE_NOTICE_ENABLED=true` posts the group notice after a successful deletion, while `MODERATION_NOTICE_CLEANUP_SECONDS=86400` removes that notice after one day. Use `0` cleanup seconds if you want moderation notices to stay, or set `MODERATION_DELETE_NOTICE_ENABLED=false` if the group should stay quiet. Silent mode also suppresses delete notices.
+`SPAM_REPEAT_MUTE_SECONDS=86400` makes repeated risky promo text trigger a one-day mute after deletion, even when a different account repeats the same lure. `SPAM_REPEAT_BAN_AFTER=2` makes the same user's second confirmed spam deletion a ban attempt. `MODERATION_DELETE_NOTICE_ENABLED=true` posts the group notice after a successful deletion, while `MODERATION_NOTICE_CLEANUP_SECONDS=86400` removes that notice after one day. Use `0` cleanup seconds if you want moderation notices to stay, or set `MODERATION_DELETE_NOTICE_ENABLED=false` if the group should stay quiet. Silent mode also suppresses delete notices.
 
 ### VPS Operations
 

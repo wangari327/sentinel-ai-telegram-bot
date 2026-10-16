@@ -22,9 +22,27 @@ class Decision:
     action: str
     notify_admin: bool
     delete: bool
+    mute: bool
     ban: bool
     pending_review: bool
     reason: str
+
+
+def repeated_risky_promo(features: MessageFeatures) -> bool:
+    return bool(
+        features.repeated_message
+        and (
+            features.contains_contact_handle_lure
+            or features.contains_money_promo
+            or features.contains_porn_bait
+            or features.contains_private_solicitation
+            or features.contains_crypto_scam
+            or features.contains_fake_reward
+            or features.contains_telegram_login_phishing_language
+            or features.high_risk_link
+            or features.domain_blocked
+        )
+    )
 
 
 def combine_scores(
@@ -68,13 +86,7 @@ def combine_scores(
         score = max(score, 0.90)
     if features.contains_money_promo and features.contains_contact_handle_lure:
         score = max(score, 0.91)
-    if features.repeated_message and (
-        features.contains_contact_handle_lure
-        or features.contains_money_promo
-        or features.contains_porn_bait
-        or features.contains_private_solicitation
-        or features.high_risk_link
-    ):
+    if repeated_risky_promo(features):
         score = max(score, 0.90)
     if features.sender_trusted and not features.high_risk_link:
         score = min(score, 0.42)
@@ -120,6 +132,7 @@ def decide_action(
             action="monitor_setup_required",
             notify_admin=not silent_enabled,
             delete=False,
+            mute=False,
             ban=False,
             pending_review=score.final_score >= suspicious_low,
             reason="setup is not completed",
@@ -130,6 +143,7 @@ def decide_action(
             action="monitor",
             notify_admin=score.final_score >= suspicious_low and not silent_enabled,
             delete=False,
+            mute=False,
             ban=False,
             pending_review=score.final_score >= suspicious_low,
             reason="monitor-only or demo mode",
@@ -145,6 +159,7 @@ def decide_action(
             action="delete_and_ban",
             notify_admin=not silent_enabled,
             delete=True,
+            mute=False,
             ban=True,
             pending_review=False,
             reason="score exceeded ban threshold with high-risk link",
@@ -158,22 +173,30 @@ def decide_action(
     explicit_private_solicitation_delete = bool(
         features.contains_private_solicitation and score.final_score >= delete_threshold
     )
+    explicit_repeated_risky_promo = repeated_risky_promo(features)
     explicit_promo_delete = bool(
         score.final_score >= delete_threshold
         and (
             (features.contains_money_promo and features.contains_contact_handle_lure)
-            or (
-                features.repeated_message
-                and (
-                    features.contains_contact_handle_lure
-                    or features.contains_money_promo
-                    or features.contains_porn_bait
-                    or features.contains_private_solicitation
-                    or features.high_risk_link
-                )
-            )
+            or explicit_repeated_risky_promo
         )
     )
+    if (
+        score.final_score >= delete_threshold
+        and explicit_repeated_risky_promo
+        and ban_enabled
+        and not features.sender_admin
+        and not features.sender_trusted
+    ):
+        return Decision(
+            action="delete_and_mute",
+            notify_admin=not silent_enabled,
+            delete=True,
+            mute=True,
+            ban=False,
+            pending_review=False,
+            reason="repeated risky promotional message",
+        )
     if score.final_score >= delete_threshold and (
         ai_result.label in {"spam", "suspicious"}
         or explicit_adult_rule_delete
@@ -184,6 +207,7 @@ def decide_action(
             action="delete",
             notify_admin=not silent_enabled,
             delete=True,
+            mute=False,
             ban=False,
             pending_review=False,
             reason="score exceeded delete threshold",
@@ -194,6 +218,7 @@ def decide_action(
             action="delete_pending_review",
             notify_admin=not silent_enabled,
             delete=True,
+            mute=False,
             ban=False,
             pending_review=True,
             reason="aggressive mode temporarily deletes suspicious content",
@@ -204,6 +229,7 @@ def decide_action(
             action="ask_admin",
             notify_admin=not silent_enabled,
             delete=False,
+            mute=False,
             ban=False,
             pending_review=True,
             reason="borderline suspicious content",
@@ -213,6 +239,7 @@ def decide_action(
         action="allow",
         notify_admin=False,
         delete=False,
+        mute=False,
         ban=False,
         pending_review=False,
         reason="below suspicious threshold",
